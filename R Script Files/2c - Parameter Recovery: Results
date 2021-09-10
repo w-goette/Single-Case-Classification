@@ -1,0 +1,183 @@
+#################################################
+## PARAMETER RECOVERY RESULTS ANALYSIS
+#################################################
+
+########################
+## CONDITION 1
+########################
+
+#compute MAE for z-scores
+C1_Zsc_MAE <- mean(abs(C1_result[, 2]-C1_result[, 8]))
+
+#compute RMSE for z-scores
+C1_Zsc_RMSE <- sqrt(mean((C1_result[, 2]-C1_result[, 8])^2))
+
+#compute empirical coverage for the 95% credible interval on z-scores
+C1_Zsc_ECR <- mean(C1_result[, 4] <= C1_result[, 8] & C1_result[, 6] >= C1_result[, 8])
+
+#compute empirical coverage for the 95% prediction interval on raw scores
+C1_Raw_ECR <- mean(C1_result[, 5] <= C1_result[, 1] & C1_result[, 7] >= C1_result[, 1])
+
+#compute the correlation between computed and true z-scores
+C1_Pearson <- cor(C1_result[, 2], C1_result[, 8], method = "pearson")
+C1_Kendall <- cor(C1_result[, 2], C1_result[, 8], method = "kendall")
+
+#reorganize R data for tidyness
+C1_Recovery <- list("Accuracy" = list("MAE" = C1_Zsc_MAE,
+                                      "RMSE" = C1_Zsc_RMSE),
+                    "ECR" = list("Zscore" = C1_Zsc_ECR,
+                                 "Raw" = C1_Raw_ECR),
+                    "Correlations" = list("Pearson" = C1_Pearson,
+                                          "Kendall" = C1_Kendall))
+
+rm(C1_Zsc_MAE, C1_Zsc_RMSE, C1_Zsc_ECR, C1_Raw_ECR, C1_Pearson, C1_Kendall)
+
+########################
+## CONDITION 2
+########################
+
+#compute MAE for z-score
+C2_Zsc_MAE <- mean(abs(C2_result[, 2]-C2_result[, 8]))
+
+#compute RMSE for z-score
+C2_Zsc_RMSE <- sqrt(mean((C2_result[, 2]-C2_result[, 8])^2))
+
+#compute empirical coverage for the 95% credible interval
+C2_Zsc_ECR <- mean(C2_result[, 4] <= C2_result[, 8] & C2_result[, 6] >= C2_result[, 8])
+
+#compute empirical coverage for the 95% prediction interval
+C2_Raw_ECR <- mean(C2_result[, 5] <= C2_result[, 1] & C2_result[, 7] >= C2_result[, 1])
+
+#compute the correlation between computed and true z-scores
+C2_Pearson <- cor(C2_result[, 2], C2_result[, 8], method = "pearson")
+C2_Kendall <- cor(C2_result[, 2], C2_result[, 8], method = "kendall")
+
+#reorganize R data for tidyness
+C2_Recovery <- list("Accuracy" = list("MAE" = C2_Zsc_MAE,
+                                      "RMSE" = C2_Zsc_RMSE),
+                    "ECR" = list("Zscore" = C2_Zsc_ECR,
+                                 "Raw" = C2_Raw_ECR),
+                    "Correlations" = list("Pearson" = C2_Pearson,
+                                          "Kendall" = C2_Kendall))
+
+rm(C2_Zsc_MAE, C2_Zsc_RMSE, C2_Zsc_ECR, C2_Raw_ECR, C2_Pearson, C2_Kendall)
+
+########################
+## CONDITION 3
+########################
+
+#compute MAE for z-score
+C3_Zsc_MAE <- mean(abs(C3_result[, 2]-C3_result[, 8]))
+
+#compute RMSE for z-score
+C3_Zsc_RMSE <- sqrt(mean((C3_result[, 2]-C3_result[, 8])^2))
+
+#compute empirical coverage for the 95% credible interval
+C3_Zsc_ECR <- mean(C3_result[, 4] <= C3_result[, 8] & C3_result[, 6] >= C3_result[, 8])
+
+#compute empirical coverage for the 95% prediction interval
+C3_Raw_ECR <- mean(C3_result[, 5] <= C3_result[, 1] & C3_result[, 7] >= C3_result[, 1])
+
+#compute the correlation between computed and true z-scores
+C3_Pearson <- cor(C3_result[, 2], C3_result[, 8], method = "pearson")
+C3_Kendall <- cor(C3_result[, 2], C3_result[, 8], method = "kendall")
+
+#reorganize R data for tidyness
+C3_Recovery <- list("Accuracy" = list("MAE" = C3_Zsc_MAE,
+                                      "RMSE" = C3_Zsc_RMSE),
+                    "ECR" = list("Zscore" = C3_Zsc_ECR,
+                                 "Raw" = C3_Raw_ECR),
+                    "Correlations" = list("Pearson" = C3_Pearson,
+                                          "Kendall" = C3_Kendall))
+
+rm(C3_Zsc_MAE, C3_Zsc_RMSE, C3_Zsc_ECR, C3_Raw_ECR, C3_Pearson, C3_Kendall)
+
+########################
+## CONDITION 4
+########################
+
+#compute MAE for z-score
+C4_Zsc_MAE <- mean(colMeans(abs(C4_result[, 7:12]-C4_result[, 43:48])))
+
+#compute RMSE for z-score
+C4_Zsc_RMSE <- mean(sqrt(colMeans((C4_result[, 7:12]-C4_result[, 43:48])^2)))
+
+#compute empirical coverage for the 95% credible interval
+C4_Zsc_ECR <- mean(C4_result[, 19:24] <= C4_result[, 43:48] & C4_result[, 31:36] >= C4_result[, 43:48])
+
+#compute empirical coverage for the 95% prediction interval
+C4_Raw_ECR <- mean(C4_result[, 25:30] <= C4_result[, 1:6] & C4_result[, 37:42] >= C4_result[, 1:6])
+
+#compute the correlation between computed and true z-scores
+C4_Pearson <- diag(cor(C4_result[, 7:12], C4_result[, 43:48], method = "pearson"))
+C4_Kendall <- diag(cor(C4_result[, 7:12], C4_result[, 43:48], method = "kendall"))
+
+#reorganize R data for tidyness
+C4_Recovery <- list("Accuracy" = list("MAE" = C4_Zsc_MAE,
+                                      "RMSE" = C4_Zsc_RMSE),
+                    "ECR" = list("Zscore" = C4_Zsc_ECR,
+                                 "Raw" = C4_Raw_ECR),
+                    "Correlations" = list("Pearson" = C4_Pearson,
+                                          "Kendall" = C4_Kendall))
+
+rm(C4_Zsc_MAE, C4_Zsc_RMSE, C4_Zsc_ECR, C4_Raw_ECR, C4_Pearson, C4_Kendall)
+
+########################
+## CONDITION 5
+########################
+
+#compute MAE for z-score
+C5_Zsc_MAE <- mean(colMeans(abs(C5_result[, 7:12]-C5_result[, 43:48])))
+
+#compute RMSE for z-score
+C5_Zsc_RMSE <- mean(sqrt(colMeans((C5_result[, 7:12]-C5_result[, 43:48])^2)))
+
+#compute empirical coverage for the 95% credible interval
+C5_Zsc_ECR <- mean(C5_result[, 19:24] <= C5_result[, 43:48] & C5_result[, 31:36] >= C5_result[, 43:48])
+
+#compute empirical coverage for the 95% prediction interval
+C5_Raw_ECR <- mean(C5_result[, 25:30] <= C5_result[, 1:6] & C5_result[, 37:42] >= C5_result[, 1:6])
+
+#compute the correlation between computed and true z-scores
+C5_Pearson <- diag(cor(C5_result[, 7:12], C5_result[, 43:48], method = "pearson"))
+C5_Kendall <- diag(cor(C5_result[, 7:12], C5_result[, 43:48], method = "kendall"))
+
+#reorganize R data for tidyness
+C5_Recovery <- list("Accuracy" = list("MAE" = C5_Zsc_MAE,
+                                      "RMSE" = C5_Zsc_RMSE),
+                    "ECR" = list("Zscore" = C5_Zsc_ECR,
+                                 "Raw" = C5_Raw_ECR),
+                    "Correlations" = list("Pearson" = C5_Pearson,
+                                          "Kendall" = C5_Kendall))
+
+rm(C5_Zsc_MAE, C5_Zsc_RMSE, C5_Zsc_ECR, C5_Raw_ECR, C5_Pearson, C5_Kendall)
+
+########################
+## CONDITION 6
+########################
+
+#compute MAE for z-score
+C6_Zsc_MAE <- mean(colMeans(abs(C6_result[, 7:12]-C6_result[, 43:48])))
+
+#compute RMSE for z-score
+C6_Zsc_RMSE <- mean(sqrt(colMeans((C6_result[, 7:12]-C6_result[, 43:48])^2)))
+
+#compute empirical coverage for the 95% credible interval
+C6_Zsc_ECR <- mean(C6_result[, 19:24] <= C6_result[, 43:48] & C6_result[, 31:36] >= C6_result[, 43:48])
+
+#compute empirical coverage for the 95% prediction interval
+C6_Raw_ECR <- mean(C6_result[, 25:30] <= C6_result[, 1:6] & C6_result[, 37:42] >= C6_result[, 1:6])
+
+#compute the correlation between computed and true z-scores
+C6_Pearson <- diag(cor(C6_result[, 7:12], C6_result[, 43:48], method = "pearson"))
+C6_Kendall <- diag(cor(C6_result[, 7:12], C6_result[, 43:48], method = "kendall"))
+
+#reorganize R data for tidyness
+C6_Recovery <- list("Accuracy" = list("MAE" = C6_Zsc_MAE,
+                                      "RMSE" = C6_Zsc_RMSE),
+                    "ECR" = list("Zscore" = C6_Zsc_ECR,
+                                 "Raw" = C6_Raw_ECR),
+                    "Correlations" = list("Pearson" = C6_Pearson,
+                                          "Kendall" = C6_Kendall))
+
+rm(C6_Zsc_MAE, C6_Zsc_RMSE, C6_Zsc_ECR, C6_Raw_ECR, C6_Pearson, C6_Kendall)
