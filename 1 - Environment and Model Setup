@@ -1,0 +1,140 @@
+#################################################
+## SIMULATION SCRIPT
+#################################################
+
+#load needed libraries
+library(rstan)
+
+#set up environment
+options(mc.cores = 4)
+SEED <- 323124
+set.seed(SEED)
+
+########################
+## MODEL CODE
+########################
+
+Model <- '
+data {
+  int<lower=1> pop;                                   // number of populations
+  int<lower=0> dim;                                   // number of dimensions
+  vector[dim] raw_x;                                  // obtained scores
+  row_vector[dim] ref_mn[pop];                        // sample means
+  row_vector<lower=0>[dim] ref_stdv[pop];             // sample SDs
+  matrix[dim, dim] cor_mat[pop];                      // intercorrelation matrix
+  real<lower=1> ref_N[pop];                           // input sample size
+  real<lower=0> eta[pop];                             // LKJ prior eta
+  vector[pop] theta;                                  // pre-test probabilities
+}
+
+transformed data{
+  real<lower=1> nu[pop];                              // degrees of freedom
+  cholesky_factor_corr[dim] L[pop];                   // correlation matrix
+  
+  for(i in 1:pop)
+    nu[i] = ref_N[i] - 1;                             // compute degrees of freedom
+  
+  for(i in 1:pop)
+    L[i] = cholesky_decompose(cor_mat[i]);            // define the correlation matrix from input
+}
+
+parameters {
+  row_vector[dim] mu[pop];                            // population mean
+  row_vector<lower=0>[dim] sigma2[pop];               // population variance
+}
+
+transformed parameters {
+  row_vector[dim] sigma[pop];                         // dimulation standard deviation
+  row_vector[dim] SEmn[pop];                          // standard error of mean
+  row_vector[dim] means[pop];                         // compute scaled means
+  row_vector[dim] Zscore[pop];                        // scaled score
+  vector[pop] log_theta = theta;                      // post-test probabilities
+  
+  for(p in 1:pop)
+    for(j in 1:dim)
+      sigma[p, j] = sqrt(((ref_N[p]-1)*(ref_stdv[p, j]^2))/sigma2[p, j]);     // compute standard deviation
+  
+  for(p in 1:pop)
+    for(j in 1:dim)
+      SEmn[p, j] = sigma[p, j]/sqrt(ref_N[p]);        // compute standard error of the mean
+  
+  for(p in 1:pop)  
+    for(j in 1:dim)
+      means[p, j] = (mu[p, j]*SEmn[p, j]) + ref_mn[p, j];     // rescale means vector
+  
+  for(p in 1:pop)
+    for(j in 1:dim)
+      Zscore[p, j] = (raw_x[j] - means[p, j]) / sigma[p, j];    // compute scaled scores
+
+  for(p in 1:pop)
+    log_theta[p] += log_theta[p] + multi_normal_cholesky_lpdf(Zscore[p, ] | to_vector(rep_array(0.0, dim)), L[p]);   // likelihood
+}
+
+model {
+  for(p in 1:pop)
+    target += chi_square_lpdf(sigma2[p, ] | nu[p]);   // estimated population SD
+  for(p in 1:pop)
+    target += normal_lpdf(mu[p, ] | 0, 1);            // estimated population means
+  for(p in 1:pop)
+    target += lkj_corr_cholesky_lpdf(L[p] | eta[p]);  // correlation matrix
+  
+  target += log_sum_exp(log_theta);
+}
+
+generated quantities {
+  vector[dim] rScore[pop];
+  vector[pop] postProb;
+  
+  for(o in 1:pop)
+    rScore[o] = multi_normal_rng(means[o, ], quad_form_diag(multiply_lower_tri_self_transpose(L[o]), sigma[o, ]));    // simulate raw scores
+  
+  postProb = softmax(log_theta);
+}
+'
+
+#convert syntax into Stan model (this will take a couple minutes)
+stan_model <- stan_model(model_code = Model, model_name="stan_model")
+
+########################
+## CONVENIENCE FUNCTIONS
+########################
+
+vec2symMat <- function(x, diag=TRUE, byrow=FALSE) {
+  m <- length(x)
+  d <- if (diag) 1 else -1
+  n <- floor((sqrt(1 + 8*m) - d)/2)
+  if (m != n*(n + d)/2) 
+    stop("Cannot make a square matrix as the length of \"x\" is incorrect.")
+  mat <- Diag(n)
+  
+  ## Row major
+  if (byrow) {
+    mat[upper.tri(mat, diag=diag)] <- x
+    index <- lower.tri(mat)
+    mat[index] <- t(mat)[index]  
+  } else {
+    ## Column major: default behavior
+    mat[lower.tri(mat, diag=diag)] <- x
+    # Just mirroring the matrix, exclude the diagonals
+    ## mat[upper.tri(mat, diag=FALSE)] <- mat[lower.tri(mat, diag=FALSE)]
+    ## Corrected a bug
+    index <- upper.tri(mat)
+    mat[index] <- t(mat)[index]  
+  }
+  mat
+} #code originally from metaSEM package
+
+Diag <- function(x, ...) {
+  if (inherits(x, "character") & missing(...)) {
+    p <- length(x)
+    out <- matrix(0, nrow=p, ncol=p)
+    diag(out) <- x
+  } else {
+    out <- diag(x, ...)
+  }
+  out
+} #code originally from metaSEM package
+
+SD <- function(x) {
+  sqrt(sum((x-mean(x))^2)/length(x))
+} #default R sd() function returns population-estimate (divided by n-1), not sample std dev (divided by n)
