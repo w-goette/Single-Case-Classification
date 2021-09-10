@@ -1,0 +1,58 @@
+#################################################
+## DIAGNOSTIC ACCURACY RESULTS ANALYSIS
+#################################################
+
+#load needed libraries
+library(MASS)
+library(nnet)
+
+#get diagnostic accuracy from highest post-test probability
+Diag_Acc <- mean(max.col(Diag_results[, 12:14]) == Diag_results$Population)
+
+#create reference data for linear discriminant function analysis
+RefSample <- round(cbind(rbind(matrix(mvrnorm(n = 100, mu = WS_nor_mns, Sigma = WS_nor_cov, empirical = TRUE), ncol = 4, nrow = 100, byrow = TRUE),
+                               matrix(mvrnorm(n = 50, mu = WS_mci_mns, Sigma = WS_mci_cov, empirical = TRUE), ncol = 4, nrow = 50, byrow = TRUE),
+                               matrix(mvrnorm(n = 40, mu = WS_alz_mns, Sigma = WS_alz_cov, empirical = TRUE), ncol = 4, nrow = 40, byrow = TRUE)),
+                         rbind(matrix(mvrnorm(n = 100, mu = RB_nor_mns, Sigma = RB_nor_cov, empirical = TRUE), ncol = 6, nrow = 100, byrow = TRUE),
+                               matrix(mvrnorm(n = 50, mu = RB_mci_mns, Sigma = RB_mci_cov, empirical = TRUE), ncol = 6, nrow = 50, byrow = TRUE),
+                               matrix(mvrnorm(n = 40, mu = RB_alz_mns, Sigma = RB_alz_cov, empirical = TRUE), ncol = 6, nrow = 40, byrow = TRUE))), 0)
+
+RefSample <- cbind(RefSample, c(rep(1, 100), rep(2, 50), rep(3, 40)))
+
+colnames(RefSample) <- c("BD", "SI", "DS", "CD", "IM", "VC", "LA", "AT", "DM", "TS", "Class")
+
+#train linear discriminant function analysis
+LDA <- lda(Class ~., data = as.data.frame(RefSample), prior = c(0.714, 0.148, 0.138))
+QDA <- qda(Class ~., data = as.data.frame(RefSample), prior = c(0.714, 0.148, 0.138))
+
+#predict membership from trained LDA functions
+LDA_pred <- predict(LDA, Diag_results[, 1:10])$`class`
+QDA_pred <- predict(QDA, Diag_results[, 1:10])$`class`
+
+#get LDA classification accuracy
+LDA_pred_acc <- mean(LDA_pred == Diag_results$Population)
+QDA_pred_acc <- mean(QDA_pred == Diag_results$Population)
+
+#run multinomial regression analysis
+MultiFit <- multinom(Class ~., data = as.data.frame(RefSample))
+
+#make predictions from multinomial regression
+MultiFit_pred <- predict(MultiFit, Diag_results[, 1:10])
+
+#get multinomial prediction accuracy
+MultiFit_pred_acc <- mean(MultiFit_pred == Diag_results$Population)
+
+#reorganize results into single object
+Diag_Acc <- list("Bayesian" = Diag_Acc,
+                 "LDA" = LDA_pred_acc,
+                 "QDA" = QDA_pred_acc,
+                 "Multinomial" = MultiFit_pred_acc)
+
+#view classification tables
+table(max.col(Diag_results[, 12:14]), Diag_results$Population)
+table(LDA_pred, Diag_results$Population)
+table(QDA_pred, Diag_results$Population)
+table(MultiFit_pred, Diag_results$Population)
+
+#keep environment tidy
+rm(LDA, QDA, MultiFit, LDA_pred_acc, QDA_pred_acc, MultiFit_pred_acc)
