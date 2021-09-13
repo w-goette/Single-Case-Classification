@@ -8,7 +8,7 @@ This repository serves as a central location for R scripts and documentation for
 |---|---|
 |R Code|[Here](https://github.com/w-goette/Single-Case-Classification/tree/main/R%20Script%20Files)|
 |Supplementary Materials|[Here](https://github.com/w-goette/Single-Case-Classification/tree/main/Markdown%20Files)|
-|Introduction to the Model|TBD|
+|Introduction to the Model|[Here](https://github.com/w-goette/Single-Case-Classification/blob/main/Modeling%20Details.md)|
 |What can we learn from a simulation study?|TBD|
 |Final Publication|TBD|
 
