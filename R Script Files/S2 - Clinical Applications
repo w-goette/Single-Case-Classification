@@ -1,0 +1,374 @@
+---
+title: "Clinical Applications (Supplemental)"
+output: 
+  rmdformats::robobook:
+    self_contained: true
+    thumbnails: false
+    lightbox: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+load(".Rdata")
+```
+
+# Introduction
+
+The general purpose of this document is to provide clinicians with the basic tools to begin understanding the implications of the proposed Bayesian model. The purpose is to be very practically oriented with full code examples and general code formats to help clinicians naive to Bayesian models, R, and Stan to still be able to utilize the model. Toward this end, excepts of code are provided throughout this document with comments, which are lines of code that begin with the # symbol. These code excerpts can be copied directly into an R environment, and the comments can be retained or deleted without affecting the end result. For clinicians who are unfamiliar with R, it is highly recommended that RStudio is used instead of R basic.
+
+# Setting Up the Model
+
+The very first thing that needs to be done is to make sure that all of the needed R packages are ready to use in the R environment. If this is the very first time that these packages are being used, either because R has just been downloaded or because R has been updated, then these libraries have to be first installed. These libraries can be installed as follows:
+
+```{r Install, eval = FALSE, echo = TRUE}
+install.packages(c("rstan", "bayesplot", "shinystan"), dependencies = TRUE)
+```
+
+After the packages have been install, they just need to be loaded in every time that a new R session is started (including the session in which the packages were downloaded). Loading the packages is similarly easy:
+
+```{r Load, eval = FALSE, echo = TRUE}
+library(rstan)
+library(bayesplot)
+library(shinystan)
+```
+```{r ActualLoad, warning = FALSE, echo = FALSE}
+suppressPackageStartupMessages(library(rstan, quietly = TRUE, verbose = FALSE))
+```
+
+Once the appropriate packages are install and loaded, the model can be prepared and run.
+
+## Creating the Stan Environment
+
+It is recommended that users consider using a single R environment for every use of the model. The primary reason for this is that RStan will have to compile the model into C++ every time that a new R environment is used. Compiling the model does not take a long time, but it does typically take a few minutes. If this were a model that would be used routinely or even semi-regularly, those minutes of compiling time can add up. So, if you want to have a standing file that has the RStan model already defined and ready for use, then the following code only needs to be run once. If you don't want to or can't save the file and are fine with re-compiling the code every time, then the following code would need to be used every time that a new R environment is opened.
+
+Stan models begin with a text string. Note that R is an object-based language, meaning that we perform various functions and save them as named objects that can then be called later. Objects in R are defined either by `<-` or `=`, but for consistency, the `<-` arrow indicator will be used throughout this code. The model text is as follows:
+
+```{r ModelScript, echo = TRUE, eval = FALSE}
+Model <- '
+data {
+  int<lower=1> pop;                                   // number of populations
+  int<lower=0> dim;                                   // number of dimensions
+  vector[dim] raw_x;                                  // obtained scores
+  row_vector[dim] ref_mn[pop];                        // sample means
+  row_vector<lower=0>[dim] ref_stdv[pop];             // sample SDs
+  matrix[dim, dim] cor_mat[pop];                      // intercorrelation matrix
+  real<lower=1> ref_N[pop];                           // input sample size
+  real<lower=0> eta[pop];                             // LKJ prior eta
+  vector[pop] theta;                                  // pre-test probabilities
+}
+
+transformed data{
+  real<lower=1> nu[pop];                              // degrees of freedom
+  cholesky_factor_corr[dim] L[pop];                   // correlation matrix
+  
+  for(i in 1:pop)
+    nu[i] = ref_N[i] - 1;                             // compute degrees of freedom
+  
+  for(i in 1:pop)
+    L[i] = cholesky_decompose(cor_mat[i]);            // define the correlation matrix from input
+}
+
+parameters {
+  row_vector[dim] mu[pop];                            // population mean
+  row_vector<lower=0>[dim] sigma2[pop];               // population variance
+}
+
+transformed parameters {
+  row_vector[dim] sigma[pop];                         // dimulation standard deviation
+  row_vector[dim] SEmn[pop];                          // standard error of mean
+  row_vector[dim] means[pop];                         // compute scaled means
+  row_vector[dim] Zscore[pop];                        // scaled score
+  vector[pop] log_theta = theta;                      // post-test probabilities
+  
+  for(p in 1:pop)
+    for(j in 1:dim)
+      sigma[p, j] = sqrt(((ref_N[p]-1)*(ref_stdv[p, j]^2))/sigma2[p, j]);     // compute standard deviation
+  
+  for(p in 1:pop)
+    for(j in 1:dim)
+      SEmn[p, j] = sigma[p, j]/sqrt(ref_N[p]);        // compute standard error of the mean
+  
+  for(p in 1:pop)  
+    for(j in 1:dim)
+      means[p, j] = (mu[p, j]*SEmn[p, j]) + ref_mn[p, j];     // rescale means vector
+  
+  for(p in 1:pop)
+    for(j in 1:dim)
+      Zscore[p, j] = (raw_x[j] - means[p, j]) / sigma[p, j];    // compute scaled scores
+
+  for(p in 1:pop)
+    log_theta[p] += log_theta[p] + multi_normal_cholesky_lpdf(Zscore[p, ] | to_vector(rep_array(0.0, dim)), L[p]);   // likelihood
+}
+
+model {
+  for(p in 1:pop)
+    target += chi_square_lpdf(sigma2[p, ] | nu[p]);   // estimated population SD
+  for(p in 1:pop)
+    target += normal_lpdf(mu[p, ] | 0, 1);            // estimated population means
+  for(p in 1:pop)
+    target += lkj_corr_cholesky_lpdf(L[p] | eta[p]);  // correlation matrix
+  
+  target += log_sum_exp(log_theta);
+}
+
+generated quantities {
+  vector[dim] rScore[pop];
+  vector[pop] postProb;
+  
+  for(o in 1:pop)
+    rScore[o] = multi_normal_rng(means[o, ], quad_form_diag(multiply_lower_tri_self_transpose(L[o]), sigma[o, ]));    // simulate raw scores
+  
+  postProb = softmax(log_theta);
+}
+'
+```
+
+Note that on the top left of this code is the word "Model" followed by `<-` and then a large chunk of text between two single quotes `' ... text ... '`. The text in quotes is the actual model, and the arrow indicates that this text will be saved as the object "Model" in the R environment. To demonstrate what this means, the following code would print out what is contained in this new "Model" object:
+
+```{r PrintModel, eval = FALSE, echo = TRUE}
+#print out what is contained in the Model object
+cat(Model)
+```
+
+For convenience, there are comments in the model text. In Stan, these comments are defined by `//` instead of `#` like in other R formats. The text to the right of `//` are short descriptions of what each line of code is doing, but they are entirely unnecessary for the model itself.
+
+Once the model text is added, it is now time to convert this text to a compiled C++ object, which fortunately RStan does for us. The following code compiles this model:
+
+```{r CompileModel, eval = FALSE, echo = TRUE}
+#convert syntax into Stan model (this will take a couple minutes)
+stan_model <- stan_model(model_code = Model, model_name="stan_model")
+```
+
+In this case, we are creating an object called "stan_model" that is the result of a special function from RStan that is itself called `stan_model`. This function compiles the actual model (this model is named "stan_model" per the `model_name="stan_model"` argument). Note that there is no inherent need for naming the text object "Model" or the compiled Stan model as "stan_model." These names could be changed to anything. Readers are cautioned to be mindful of these name changes, however. All of the following code will call on these objects as named above, so if a user changes these names, then later code will need to be adjusted to match these new names.
+
+After a few minutes, the model should finish compiling. If you intend on using the same R environment every single time, then you will not need to repeat these steps again.
+
+## Inputting Data
+
+In the above text for the model, there is a block that defines the data (`data{ ... text ... }`). This block is aptly named the data block and tells Stan what the input data should look like. Starting at the top of this block and going down that column of text, the model expects a positive integer of at least 1 (`int<lower=1>`) telling it the number of populations to compare, a positive integer (`int<lower=0>`) corresponding to the number of tests (or dimensions) that are being entered, a vector of obtained scores, a list of row vectors for sample means corresponding to these tests, a list of row vectors of sample standard deviations corresponding to the tests, a list of correlation matrices for these tests, the number of individuals used in these samples, the prior that will be used for the correlation matrix, and the pre-test probabilities for each population.
+
+To contextualize these values, say that it is desired to examine WAIS scores. Say as well that we are interested in 5 primary diagnostic possibilities, so in this case, we would need to specify this as `pop <- 5`. Assuming we administer the core subtests only, there are 10 tests of interests, so when we run the model, we will need to specify that `dim <- 10`. It is difficult to interpret WAIS scores if there are no scores, so clearly an individual has been administered the WAIS and obtained certain scaled scores as a result. These specific results will be entered into a string: `raw_x <- c(10, 12, 8, 13, 9, 12, 11, 10, 8, 10)` as an example. Lets say that the first reference sample that we are interested in evaluating is just the normative sample. In this case, the reference sample means are all 10 with standard deviations of 3: `ref_mn <- c(10, 10, 10, 10, 10, 10, 10, 10, 10, 10)` and `ref_stdv <- c(3, 3, 3, 3, 3, 3, 3, 3, 3, 3)`. There would then need to be 4 other reference means and standard deviations to enter since we defined the number of populations as 5 (i.e., normal + 4 other possibiliteis). In the event that you are examining reference means or standard deviations that are the same for every test (like in this particular case), then an easier way of specifying this is to use the `rep` function, which is short for repeat. In this case, for example, we could do the following: `ref_mn <- rep(10, dim)` and `ref_stdv <- rep(3, dim)`. These statements tell R to repeat the value 10 and 3, respectively, both however many times `dim` has been defined as (as shown earlier in this paragraph, `dim` = 10 for this case). The next required piece of information is the correlation matrix for these 10 tests. This information is usually available in the test manual. A full entry is shown later, so for the sake of space, it is not repeated here. The last information about the reference sample being used is just its *N*. For illustration purposes, we will assume that our particular age-based cell in the normative manual was based on 100 individuals: `ref_N <- 100`. The next data requirement is unrelated to the sample and individual. Currently, there is not sufficient evidence on what $\eta$ values may be best to use in which circumstances, so it is recommended that this just be defined as 1 routinely: `eta <- 1`. Finally, if there is any pre-test probability information to include, then this can be specified by passing a vector to the `theta` argument. In this case, let's say that we have no *a priori* reason to believe that any single diagnosis is more likely than the others. We can specify this uniform pre-test probability as follows: `theta <- rep(1/5, 5)`. 
+
+The following code provides an empty template for entering in data as described above. Comments are present to help clarify what information would be added. These comments should be deleted and replaced with the needed values.
+
+```{r DataTemplates, eval = FALSE, echo = TRUE}
+pop <- #number of diagnostic populations
+  
+dim <- #number of tests
+
+raw_x <- c(#score on test 1, #score on test 2, #score on test 3, ...)
+  
+ref_mn <- rbind(
+  c(#sample mean on test 1 in Population 1, #sample mean on test 2 in Population 1, ...),
+  c(#sample mean on test 1 in Population 2, #sample mean on test 2 in Population 2, ...), 
+    ...)
+
+ref_stdv <- rbind(
+  c(#sample SD on test 1 in Population 1, #sample SD on test 2 in Population 1, ...),
+  c(#sample SD on test 1 in Population 2, #sample mean on test 2 in Population 2, ...),
+    ...)
+
+cor_mat <- list(matrix(c(#1, A, B, C,
+                         #A, 1, D, E,
+                         #B, D, 1, F,
+                         #C, E, F, 1),
+                       nrow = dim,
+                       ncol = dim,
+                       byrow = TRUE),
+                matrix(c(#1, G, H, I,
+                         #G, 1, J, K,
+                         #H, J, 1, L,
+                         #I, K, L, 1),
+                       nrow = dim,
+                       ncol = dim,
+                       byrow = TRUE),
+                ...)
+
+ref_N <- c(#sample size for Sample 1, #sample size for Sample 2, ...)
+  
+eta <- rep(1, pop)
+
+theta <- rep(1/pop, pop) #for uniform pre-test probabilities
+```
+
+Since these data need to be declared for every single reference sample that we wish to use for comparison, it can be a bit difficult to get data ready in R. Clinicians are likely to have certain tests, studies, and norms that they refer to often. As a result, it could be helpful to have a series of objects that have these reference data (i.e., means, standard deviations, and correlation matrices) ready for future uses. In this case, a clinician may put in some upfront time to enter in these data from a variety of resources, but then these objects can be called up without needing to re-enter them later, which may save time in the long run. In these cases, instead of generic names like `ref_mn`, objects may be named in such a way as to be meaningful to the clinician. Below is an example where information about the RBANS normative sample is saved as an object that could then be called at any time without having re-enter the data:
+
+```{r CustomData, eval = FALSE, echo = TRUE}
+RBANS_dim <- 6
+
+RBANS_mn <- rep(100, RBANS_dim)
+
+RBANS_sd <- rep(15, RBANS_dim)
+
+RBANS_cor <- matrix(c(1.00, 0.29, 0.37, 0.47, 0.64, 0.78,
+                      0.29, 1.00, 0.29, 0.31, 0.34, 0.63,
+                      0.37, 0.29, 1.00, 0.38, 0.32, 0.66,
+                      0.47, 0.31, 0.39, 1.00, 0.40, 0.72,
+                      0.64, 0.34, 0.32, 0.40, 1.00, 0.76,
+                      0.78, 0.63, 0.66, 0.72, 0.76, 1.00),
+                    nrow = RBANS_dim,
+                    ncol = RBANS_dim,
+                    byrow = TRUE,
+                    dimnames = list(c("IM", "VC", "AT", "LA", "DM", "TS"), c("IM", "VC", "AT", "LA", "DM", "TS")))
+#the dimnames argument specifies the names of the rows and columns
+#the first character string given by c("text" ... "text") is the row names
+#the second string given by c("text" ... "text") is the column names
+
+RBANS_N <- 540
+```
+
+Using the above as an example, whenever I would want to use the RBANS normative sample as one of the comparisons, then rather than retype all the above information, these objects would be in the R environment (assuming it was saved and is being used again) and could therefore be called directly.
+
+An important caveat about data entry is that it is assumed that all of the reference data are entered in the same order of tests as the client's raw scores are entered. In the case of the RBANS, if the raw scores were entered for the Immediate Memory Index, then the Visuospatial/Construction, then the Attention, then Language, then Delayed Memory, and lastly Total Scale, then the reference means, standard deviations, and correlation matrix need to match that exact same order from left to right. There is no way that R will know that the tests are out of order, so the results could be significantly impacted if the order of these entries is not exactly the same.
+
+## Running the Model
+
+Now that the data are defined, these data objects can be passed to Stan in order to run the model.
+
+It is recommended that users run multiple chains of sampling. These multiple runs are not necessary for the model to work; however, they are useful for checking whether or not the sampling worked as needed. In the future, sufficient research on the stability of the model may render this unnecessary entirely, but since the model is still being developed, it is better to be cautious. Four chains are considered to be the minimum number of chains to run, but users could add more if so desired (note that there is no accuracy or performance improvement to adding more chains). To speed up the posterior sampling over these chains, it is recommended to run these chains in parallel across multiple processors. If you know how many processors your computer has available, then it is possible to specify this number directly; however, the following code detects the number of available cores and automates the determination of how to handle parallelization of the chains.
+
+```{r RunParallel, eval = FALSE, echo = TRUE}
+#make sure model runs as quickly as possible
+options(mc.cores = parallel::detectCores())
+```
+
+If the model is run on 4 chains, then specifying more than 4 cores (i.e., `options(mc.cores = 12)` versus `options(mc.cores = 4)`) does not result in a speed increase. Running the model is relatively straight forward. The following code is the blank template that will just be customized for each reference sample of interest.
+
+```{r StanTemplate, eval = FALSE}
+stan_sample <- sampling(stan_model, data = list(pop = pop, dim = dim, raw_x = raw_x, ref_mn = ref_mn, ref_stdv = ref_stdv, cor_mat = cor_mat, ref_N = ref_N, eta = eta, theta = theta))
+```
+
+Assuming that the data are entered using the general template provided above, there is no need to change any of the names of objects in this code. In the event, that a user has a special set of frequently used reference samples then the names can be fairly easily replaced. The following is an example that continues with the RBANS reference sample illustrated earlier.
+
+```{r StanRBANS, eval = FALSE}
+stan_RBANS <- sampling(stan_model, data = list(pop = pop, dim = RBANS_dim, raw_x = raw_x, ref_mn = RBANS_mn, ref_stdv = RBANS_stdv, cor_mat = RBANS_mat, ref_N = RBANS_N, eta = eta, theta = theta))
+```
+
+In R, there is no warning that an object is about to be rewritten. Operating systems like Windows make us acutely aware anytime that we try to save a document with the same name as an existing one, but R has no such good graces. As a result, if we have multiple reference samples but enter each of these samples means under the same named object `ref_mn`, then which ever is the last sample to have been entered will be what is saved as `ref_mn` and there will be no trace of any of the previous ones. This is important for case-by-case use since if one client's data is overwritten by another's, then there's no way to go back to the old data unless it is re-entered. This is particularly relevant for defining common tests/batteries or diangostic contrasts since it could result is a lot of redundant work if `ref_mn` is defined each time versus giving it a special name (e.g., `RBANS_mns`). Similarly, if a client's data needs to be run again or checked later, then there's not a way to cycle back to it unless it was saved as a specific object in the R environment (e.g., `9023856_10-05-2019 <- sampling(...)` where the first digits may refer to an MRN that is then followed by the assessment date).
+
+Over time, it can be possible to start accumulating large numbers of objects stored in the R environment, particularly depending on one's needs and naming conventions. There is nothing inherently wrong with this, but if the models are run repeatedly in the same R environment, then there may quickly become an overabundance of old and new objects that cause the file to become very large and the environment messy. A good practice therefore would be to retain a few commonly used objects but then clear out any that are not going to be used anymore. Objects can be removed/deleted from R with the function `rm()`. Here's an example:
+
+```{r TidyTrash, eval = FALSE}
+rm(ref_mn1, ref_mn2, ref_mn3, 
+   ref_stdv1, ref_stdv2, ref_stdv3, 
+   cor_mat1, cor_mat2, cor_mat3, 
+   ref_N1, ref_N2, ref_N3)
+```
+
+Another option to keep the environment tidy is to condense commonly used reference samples into lists and then deleting the individual objects. Here's an example of this option:
+
+```{r TidyLists, eval = FALSE}
+#create new lists and then delete the old objects
+Means <- list("RBANS" = RBANS_mn, "WAIS" = WAIS_mn, ...)
+StDvs <- list("RBANS" = RBANS_sd, "WAIS" = WAIS_sd, ...)
+CorMats <- list("RBANS" = RBANS_cor, "WAIS" = WAIS_cor, ...)
+SampleSize <- list("RBANS" = RBANS_N, "WAIS" = WAIS_N, ...)
+
+rm(RBANS_mn, WAIS_mn, RBANS_sd, WAIS_sd, RBANS_cor, WAIS_cor, RBANS_N, WAIS_N)
+
+#extract a value from a list
+Means$RBANS   #equivalent to having called RBANS_mn
+StDvs$RBANS   #equivalent to having called RBANS_sd
+
+#add new object to an existing list
+Means[["CVLT"]] <- CVLT_mn
+
+rm(CLVT_mn)
+
+#add new reference without first creating a new object
+Means[["CVLT"]] <- c(#mean Trial 1 scaled score, ...)
+```
+
+# Clinical Interpretations
+
+Every Stan object returned from the `sampling` function will contain the *z*-scores estimated for each obtained score based on whatever reference sample was used. In order to see these *z*-scores, you need to request a summary of the object.
+
+```{r SummaryEx, eval = FALSE}
+summary(stan_sample)
+```
+
+If the model was run with multiple chains, then this will provide a summary for each chain and then for the combined chains. Generally speaking, there is no reason to look at the values for each individual chain, so the following simplifies the output. First, it returns just the combined chains results. Second, it returns the estimates for only the *z*-scores as opposed to the other parameters that the model estimates (e.g., the population mean) as these are not usually relevant for clinical interpretations. Third, it shows the point estimate for each *z*-score, the standard deviation of the posterior distributions, the lower and upper bounds for the 95% credible interval, and some model diagnostics (see next section for details).
+
+```{r SummaryClean, eval = FALSE}
+summary(stan_sample, pars = "Zscore")$summary[, c(1, 3:4, 8:10)]
+```
+
+It can also be helpful sometimes to visualize the distribution of these scores. A plot for the posterior distribution of the *z*-scores can be called with the following code:
+
+```{r SummaryPlot}
+plot(stan_sample, show_density = TRUE, ci_level = 0.80, outer_level = 0.95, pars = "Zscore")
+```
+
+You will note in these plots that the Zscore parameter is indexed by two values, which in this case are 1 and then another integer between 1 and 10. In cases where more than one population is fit at a time, the first number in the bracket will index the *z*-scores from that population while the second number in the bracket always indexes the test number. So, for illustration, the Zscore[1, 5] data corresponds to the *z*-score for the 5th test in the first population.
+
+## Checking the Model
+
+Using the above code example, the final two columns reported will be for `n_eff` and `Rhat`, which correspond to effective sample size and a convergence diagnostic, respectively. With regard to effective sample size, the larger the numbers the better. The effective sample size should be interpreted in the context of the number of samples run in total. Using the values specified in the Stan sampling template, the posterior contains 4,000 samples, so we should see similarly large effective sample sizes. When effective sample size is small, this suggests that the model did not run efficiently. This likely would be a sign that the data were entered incorrectly, but it could also occur in a case in which the model is severely misspecified. Most users should not see an issue with effective sample size using this model, and such an error would likely be the product of a data entry error.
+
+The $\hat{R}$ value is a measure of the way in which the chains have mixed. If only a single chain was run, then there will be no estimate here (and the user will receive an out of bounds error message from R if the summary code given earlier is used since the 10th column corresponds to this statistic). When there is good mixing of the chains, the value for $\hat{R}$ should be 1. When $\hat{R}$ exceeds 1.01, the chains are considered to have not mixed properly. Failure for the chains to mix suggests that the posterior space was not adequately characterized, which threatens the validity of the model's results.
+
+$\hat{R}$ is a simple indicator of mixing. It is important to also check the trace plots of the chains. These plots should look like fuzzy caterpillars or very tightly constricted seismometer graphs. An example of this plot for the *z*-scores is shown below.
+
+```{r TracePlot}
+plot(stan_sample, plotfun = "trace", pars = "Zscore")
+```
+
+In the event that there is evidence that the model may not have stabilized (i.e., had good mixing), the results from the model should not be interpreted. Additionally, the package `shinystan` provides a wide variety of very helpful diagnostic plots and tables to help further identify potential issues with the model. A Stan object can be viewed in this package as follows: `shiny <- as.shinystan(stan_sample)` and then `launch_shinystan(shiny)`.
+
+## Pre-test Probabilities
+
+A powerful advantage of Bayesian methods in diagnostic modeling is the ability to utilize pre-test probabilities to arrive at individualized post-test probabilities of diagnosis/disease. In the best case scenario, a client may present with a criterion-based pre-test risk. For example, the individual may have been administered a cognitive screening test like the MoCA and failed it at a certain threshold. This information could be converted to a pre-test probability for cognitive impairment, or in the presence of additional information, for certain etiologies of impairment. Alternatively, an individual's probability of belonging to one of two diagnostic groups may be estimated using a logistic regression before the neuropsychological tests are interpreted. The results of testing could then be combined with the pre-test probability estimate from the logistic regression. In the simplest case, however, the pre-test probability is just the prevalence of the diagnosis given the relevant demographic traits of the individual. 
+
+Specifying pre-test probabilities is very simple in the model syntax as it involves just changing the theta argument: `theta <- c(1/3, 1/3, 1/3)` versus `theta <- c(1/2, 1/4, 1/4)`. Where this becomes particularly relevant, however, is when we must "chain" several tests in the battery together. In the simluation study, we had data for the RBANS and the WAIS across 3 shared conditions (normal cognition, MCI, and AD), but there wasn't a single data source for the RBANS + WAIS in all three conditions. As a result, we had to examine the WAIS in those 3 conditions first, extract the new post-test probabilities from that analysis, and then examine the RBANS in those 3 conditions. In this case, pre-test probabilities based on the prevalence of the various diagnoses given the "client's" age were updated by the WAIS subtests (resulting in a post-test probability based on WAIS performance) and then those post-test probabilities were treated as pre-test probabilities for the RBANS that were in kind updated into the final set of post-test probabilities. This chaining of pre-/post-test probabilities and updating diagnostic beliefs can be repeated an arbitrary number of times. The following code demonstrates how to do this within R.
+
+```{r PostTestExtract, echo = TRUE, eval = FALSE}
+#run the sampler and estimate the posteriors 
+#(assumes uniform pre-test probability over 3 populations)
+stan_sample <- sampling(stan_model, data = list(..., theta = c(1/3, 1/3, 1/3)))
+
+#update theta
+theta <- summary(stan_sample, pars = "postProb")$summary[, 1]
+
+#run next iteration of the sampler with new pre-test probabilities
+stan_sample <- sampling(stan_model, data = list(..., theta = theta))
+```
+
+## Posterior Hypothesis Testing
+
+The model text at the very beginning of this document ends with a block for generating posterior predictive distributions. This block is called the generated parameters block, and in this case, there are only two values being estimated: `postProb` and `rScore`. The former was discussed above as it reflects the post-test probability estimates from the model. The only additional point to mention here is that there is a distribution of post-test probabilities, meaning that we can conduct inference on these data (e.g., test whether a post-test probability is significantly different from zero). Caution should be used in inference of the post-test probability in cases where models are linked/chained together as the full-distribution of post-test probabilities is not passed to the model, meaning that uncertainty of the post-test probability is not passed through the model at each step. 
+
+The latter value being estimated, `rScore`, corresponds to the model's estimate for what the test scores look like in the population. The other rMarkdown document for this study concludes with some visualizations of the posterior distribution for reference. These posterior estimates can be extracted from the Stan object and then used to explore additional questions. For example, it is often of interest whether or not the difference between two scores is significant and how common such a difference is. The posterior distribution samples can provide some information about such questions. The following code demonstrates how to visualize the difference between two test scores using the simulated WAIS data.
+
+```{r PosteriorDiff}
+#extract the raw score posterior estimates
+posterior_dist <- as.data.frame(extract(stan_sample, pars = "rScore"))
+
+#view a histogram of the difference between Similarities and Vocabulary
+hist(c(round(posterior_dist[, 2]) - round(posterior_dist[, 5])), main = "Difference between Similarities and Vocabulary", xlab = "Scaled Score Difference")
+```
+
+As is apparent from the plot of the difference, there is a fair amount of probable mass that there is no difference between the scores; however, on the whole, it is more likely that the Vocabulary scaled score is higher than the Similarities scaled score. It is also possible to determine the percentile ranks of differences. For example, the following code finds the empirical percentile for differences less than or equal to -3, 0, and 3 points:
+
+```{r Percentiles}
+#convert the differences into percentiles
+posterior_contrast <- round(posterior_dist[, 2]) - round(posterior_dist[, 5])
+
+#find the largest percentile that is less than or equal to -10
+ecdf(posterior_contrast)(-3)
+
+#find the largest percentile that is less than or equal to 0
+ecdf(posterior_contrast)(0)
+
+#find the largest percentile that is less than or equal to 10
+ecdf(posterior_contrast)(3)
+```
+
+If one is not interested in the percentiles but instead wants to know critical values for certain contrasts, then the can also be requested. For example, if one wants to know whether a score is within the 95% credible intervals, then the following code can be used:
+
+```{r CriticalValues}
+quantile(posterior_contrast, c(0.025, 0.975))
+```
+
+Using the results above, if someone had a Similarities and Vocabulary discrepancy of -5, then this would be considered statistically significant at the .05 level. Just for transparency, the WAIS critical values are not based on the sampling distributions of the statistics but instead on the measurement distributions (i.e., they take into account the standard error of measurement). As a result, these critical values likely do not equate to those reported in the manual as they are answering a different question. The model does not currently take into consideration measurement error.
+
+Using these methods of inference on the posterior distribution, it is possible to arrive at a general idea of how rare certain differences may be in the population. This method has unique potential, but there is additional research needed to clarify whether the posterior predictive distributions convey the same information in clinical data as they have in simulated normal distributions.
