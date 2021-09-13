@@ -1,0 +1,335 @@
+---
+title: "Methods Overview (Supplemental)"
+output: 
+  rmdformats::robobook:
+    self_contained: true
+    thumbnails: false
+    lightbox: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+load(".RData")
+```
+
+# Overview
+
+The purpose of this document is to review and summarize the various methods used in the simulation study. Accompanying R script files supply the exact code used in the study so that the results are fully reproducible for interested readers. Though the R script file is annotated with comments to help explain the code, the conceptual or practical basis for the simulation methods is better explained here.
+
+# Data Generation Methods
+
+The following sections provide some additional breakdown of the data generation processes. Readers looking for all of the code used for data generation will find it in an accompanying R script file. Only specific excerpts are provided in this document, but the general commentary on these excerpts apply to all of the code used. The aim is to identify and provide greater familiarity with what the simulated data actually looked like as opposed to just the values used to generate them.
+
+## General Factor Model
+
+Simulation of single tests was straight forward as the population mean and standard deviation were defined by the condition, so a single simulated observation was just a random normal deviate given those parameters: `rnorm(n = 1, mean = 50, sd = 10)`. To stay grounded to data generation with some relevance to clinical tests for the multivariate conditions (Conditions 4-6), the necessary correlation matrices were produced by specifying a factor structure. For readers unfamiliar, a correlation matrix ($\Sigma$) can be identified from the factor loadings ($\Lambda$) and factor intercorrelations ($\Psi$). In the simplest expression of this, the following formula returns the correlation matrix: $\Sigma = \Lambda\Psi\Lambda^{'}$, where $\Lambda$ is a p x k matrix of the factor loadings of p tests on k factors and $\Psi$ is the k x k matrix of the factor correlations (this is a unit matrix when the factors are orthogonal and a correlation matrix when an oblique rotation is used).
+
+### Production of Correlation Matrices
+
+A goal in generating the data was that the data generation process would produce noisy simulated data. In other words, despite prescriptive generation rules, the end goal was to produce data that captured some degree of error. In the case of correlation matrices, this noise came from specifying a factor structure that had some degree of model error (i.e., the factor solution did not model all the true factors present) and from allowing randomness in the factor specifications. Simulating correlation matrices for simplified factor models (i.e., the major, or dominant, factors are modeled but many less significant minor factors are not directly estimated) comes from recommendations made by Tucker and colleagues (see manuscript for citation). In simulation studies of factor analysis, the generation of correlation matrices with this kind of specified model error is recommended, and it was adopted here to produce the desired imperfect correlation matrix. These correlation matrices are imperfect because the factor model itself is misspecified as not all true factors (major + minor) are modeled; instead, the factor model captures only those factors that account for the most variance (major) and thus leaves residual error unaccounted for. Thus, instead of the idealized formula for converting the factor model back to a correlation matrix, the model-implied correlation matrix must include error ($\Theta_\epsilon$): $\Sigma(\theta) = \Lambda\Psi\Lambda^{'} + \Theta_\epsilon$. Such a factor analysis approach should capture a realistic neuropsychological factor analysis wherein the focus is estimating primary factors while some real but non-informative minor factors are not included. In addition to this modeling error, the factor loadings themselves were selected randomly from specified normal distributions. As a result, the factor loadings are not unrealistically similar but instead have similar magnitudes and have nonequivalent loadings across items. To illustrate, the following excerpt is from the code for the generation of Condition 4's correlation matrix. In the R script file, this code can be found on lines 33-47 in the 2a - Parameter Recovery: Conditions R file.
+
+```{r FactorLoadings, echo = TRUE, eval = FALSE}
+#generate noisy 2-factor model for six simulated tests
+factors_major <- rnorm(6, 0.60, 0.05)
+
+#generate factor loadings for the minor factors
+factors_minor <- matrix(0, ncol = 50, nrow = 6)
+
+for(i in 1:50) {
+  y <- 0.80^(i - 1)
+  factors_minor[, i] <- rnorm(6, 0, y)
+}
+
+#ensure that the minor factors account for about 10% of the overall item variance
+for(i in 1:6) {
+  factors_minor[i, ] <- sqrt(factors_minor[i, ]^2 / sum(factors_minor[i, ]^2) * 0.1)
+}
+```
+
+The major, or dominant, factor loadings are randomly selected from a normal distribution with a mean of 0.60 and standard deviation of 0.05. A factor loading ($\lambda$) of 0.60 would be considered a healthy factor loading and the standard deviation of this sampling distribution would mean that it is is unlikely that a factor loading of less than 0.30 would be selected (this would be 6 standard deviations below the mean and thus a highly improbable random value to select). Although there is no definite rule, a significant factor loading is commonly considered to be greater than 0.30, so this distribution from which the factor loadings are selected provides reasonable certainty that all of the dominant factor loadings will be considered "significant."
+
+The remainder of the code listed above defines the factor loadings for the minor factors. These minor factors are the source of the model error as they are real factors shared by the tests, but they contribute relatively little to the shared variance of the tests themselves. Consistent with recommendations in the literature (see Hong reference in manuscript), these minor factors are scaled so that each additional minor factor has less relevance (smaller loadings) than previous minor factors. In other words, the first minor factor has larger estimated factor loadings than the second, which has larger loadings than the third minor factor and so on. In this case, 50 minor factors were estimated. To ensure that the factor loadings for these minor factors stay a source of measurement noise instead of clear model misspecification, the minor factors are also scaled so that, in total, they contributes to 10% of the total variance for each test (final `for` loop in excerpt above).
+
+The factor loadings for the major and minor factors are then included into a single general factor loading matrix (6 x 51 matrix). Since it is unusual in neuropsychology to have tests that measure orthogonal cognitive domains, the factor structure was considered to be oblique. The factor intercorrelation matrix ($\Psi$) was provided by the following code (lines 62-63 in the R script):
+
+```{r Intercorrelations, echo = TRUE, eval = FALSE}
+#generate a factor intercorrelation matrix
+phi <- vec2symMat(rep(0.25, 1275), diag = FALSE)
+```
+
+In this case, the correlations between all factors (both major and minor) is 0.25. Thus, the model has intercorrelations between all the dominant factors and minor factors. Since a correlation matrix is symmetric and the diagonal is known, there are $\frac{p(p-1)}{2}$ unique correlation values that need to be estimated. Given that there are 50 factors being specified, this means that there need to be 1225 ($\frac{51(51-1)}{2} = 1275$) correlations. These correlations are returned as a vector of length 1275, which is then converted in a symmetric matrix (function `vec2symMat` performs this operation) and the diagonal element of the matrix is filled with 1s (argument `diag = FALSE` performs this operation).
+
+Now that the factor matrix and intercorrelation matrices are defined, the correlation matrix can be estimated. The following lines of code perform that action (correspond to lines 65-68 in the R script).
+
+```{r CombineToFactors, echo = TRUE, eval = FALSE}
+#compute the correlation matrix
+cor_mat <- factors %*% phi %*% t(factors)
+diag(cor_mat) <- rep(1, 6)
+```
+
+The matrix operators `%*%` perform the needed matrix multiplication to combine the factor and intercorrelation matrices per the formula specified earlier in this document. In R, the `t()` function transposes the matrix. The final line (`diag(cor_mat) <- rep(1, 6)`) replaces the diagonal of the implied correlation matrix with 1s to ensure that the result is a meaningful correlation matrix (note that Hong computes the uniqueness for each test in order to produce a correlation matrix with a diagonal of 1s. Since the uniquenesses are not needed for this simulation, the diagonal is just replaced with 1s as opposed to computing the uniqueness matrix to then add to to the diagonal and bring it to 1s).
+
+### Evaluating the Correlation Matrices
+
+Now that the correlation matrices are generated, it is important to consider whether (a) they are proper matrices and (b) they convey the same information intended in their generation. The primary concern with regard to the former is whether the resulting matrices are positive definite. The latter concern can be addressed by confirmatory factor analysis.
+
+The `metaSEM` package provides a helpful function called `is.pd()`, which tests whether a given matrix is positive definite. Although it does not make a difference to the `is.pd()` function, the correlation matrices were not save as they were converted to covariance matrices for use in the `MASS` package's `mvrnorm()` function. R includes a convenience function called `cov2cor()` to convert a covariance matrix back into a correlation matrix, so this was done in order to show that the correlation matrix is indeed positive definite. This is checked below:
+
+```{r PDcheck, echo = TRUE, warning = FALSE}
+#quietly load the metaSEM package
+suppressPackageStartupMessages(library(metaSEM, quietly = TRUE, verbose = FALSE))
+
+#evaluate the simulated correlation matrices
+is.pd(cov2cor(C4_covmat))
+is.pd(cov2cor(C5_covmat))
+is.pd(cov2cor(C6_covmat))
+```
+
+The simulated correlations are all positive definite. Now that there is evidence that the matrices are factorable, the next step would be to ensure that the matrices fit their defined models. This analysis is completed using confirmatory factor analysis with the package `lavaan`.
+
+```{r CFAcheck, echo = TRUE}
+#quietly load in the lavaan package
+suppressPackageStartupMessages(library(lavaan, quietly = TRUE, verbose = FALSE))
+
+#lavaan requires that rows and columns of covariance matrix have names
+dimnames(C4_covmat) <- dimnames(C5_covmat) <- dimnames(C6_covmat) <- list(paste("V", 1:6, sep = ""),
+                                                                          paste("V", 1:6, sep = ""))
+
+#specify a two factor model
+FactorModel <- '
+F1 =~ V1 + V2 + V3
+F2 =~ V4 + V5 + V6
+'
+
+CFA_C4 <- cfa(FactorModel, sample.cov = C4_covmat, sample.nobs = 250, std.lv = TRUE)
+
+CFA_C5 <- cfa(FactorModel, sample.cov = C5_covmat, sample.nobs = 250, std.lv = TRUE)
+
+CFA_C6 <- cfa(FactorModel, sample.cov = C6_covmat, sample.nobs = 250, std.lv = TRUE)
+```
+
+The interest here is just to see whether the correlation matrices reflect the specified factor structure. The following table summarizes the fit statistics of the specified models.
+
+```{r CFAfits, echo = FALSE, warning = FALSE}
+suppressPackageStartupMessages(library(kableExtra, quietly = TRUE, verbose = FALSE))
+
+matrix(round(c(fitmeasures(CFA_C4, fit.measures = c("chisq", "df", "pvalue", "cfi", "tli", "rmsea")), 
+               fitmeasures(CFA_C5, fit.measures = c("chisq", "df", "pvalue", "cfi", "tli", "rmsea")),
+               fitmeasures(CFA_C6, fit.measures = c("chisq", "df", "pvalue", "cfi", "tli", "rmsea"))), 4),
+       byrow = TRUE,
+       nrow = 3,
+       ncol = 6,
+       dimnames = list(c("Condition 4", "Condition 5", "Condition 6"), c("Chi-Square", "df", "p-value", "CFI", "TLI", "RMSEA"))) %>%
+kable(caption = "Fit of Simulated Factor Models", digits = 4) %>%
+  kable_classic(full_width = FALSE)
+```
+
+The above results demonstrate that the correlation matrices do produce the expected factor model solutions. All of the fit indices would be considered acceptable for accepting a model. As a result, the correlation matrices capture the essential factor structure intended while still producing sufficient error to yield realistic fit indices. Note that `lavaan` requires a sample size value when only a covariance (in this case correlation) matrix is supplied, so a value of 250 was selected arbitrarily. Fit statistics, and particularly null hypothesis test results, should be viewed with this caveat in mind as there is not a true population sample size that could be specified, so some of these fit values could be manipulated by adjusting the specified sample size.
+
+It can also be helpful to visualize what these factor models look like. The following plots correspond to the two-factor model specified in the simulations. Since the same two-factor model was specified for conditions 4-6, the plot of the model is shown only once below.
+
+```{r CFAplots, echo = FALSE, wawrning = FALSE}
+suppressPackageStartupMessages(library(semPlot, quietly = TRUE, verbose = FALSE))
+
+semPaths(CFA_C4, title = TRUE)
+```
+
+## Computing the Covariance Matrices
+
+As briefly noted earlier, the simulation of multivariate normal data with the `MASS` package requires a covariance matrix, which is just a correlation  matrix scaled by standard deviations. Since all simulated tests were treated as T score variables, the population standard deviations were all set to 10 across all tests and conditions. Once the standard deviations for the tests in Conditions 5 and 6 were selected, they were combined with the correlation matrix to form the covariance matrices. The actual method for this is shown below (corresponds to R script lines 70-72):
+
+```{r ComputeCov, echo = TRUE, eval = FALSE}
+#convert correlation matrix into covariance matrix
+cov_mat <- diag(rep(10, 6)) %*% cor_mat %*% t(diag(rep(10, 6)))
+C4_covmat <- cov_mat
+```
+
+## Generating Multivariate Normal Data
+
+The `MASS` package has a convenient function for generating multivariate normal data: `mvrnorm()`. This function has the following general arguments: the number of random draws, the vector of means, the covariance matrix, and whether the means and covariance are true population parameters or sample-based estimates of the parameters (`empirical = FALSE` for true parameters and `empirical = TRUE` for sample estimates). As has been detailed above, the covariance matrices are fully specified, so this means that the only thing needed to begin generating random normal data is the vector of means, which for all conditions was set to 50 to be consistent with the T score metric.
+
+The code for generating the simulated reference samples can be found in the R script. For simple illustration, the following excerpt demonstrates the code used for single test conditions and then the multivariate conditions:
+
+```{r ReferenceSimulation, echo = TRUE, eval = FALSE}
+#simulate 100 individuals given a single test that has mean of 50 and standard deviation of 10
+C1_ref <- round(rnorm(n = 1000, mean = 50, sd = 10), 0)
+
+#simulate 1000 individuals given 6 tests that all have means of 50 and standard deviations of 10
+C4_ref <- round(mvrnorm(n = 1000, mu = rep(50, 6), Sigma = C5_covmat, empirical = FALSE), 0)
+```
+
+One thing to note about the above code is that all the simulated scores are rounded to a whole number (i.e., `round(..., 0)`). This decision was made in order to ensure that the simulated data looked more realistic as T scores are always whole numbers. In essence, these lines of code are doing what researchers do when they collect a sample of data. There exists some population of individuals from which we observe a subset. In this case, the population values can be treated as known since it is a simulation. We then randomly generate some number of different observations given these population values, and this is a sample of individuals from that population. Then, every new client is an additional random draw from some population that shares the same properties used to generate the sample. 
+
+The following table shows the first few data that were simulated for a multivariate condition in the current study. The multivariate condition was selected as it is a more helpful illustration.
+
+```{r DataHeader, echo = FALSE}
+kable(matrix(c(C4_ref[1:6, ]), byrow = FALSE, ncol = 6, nrow = 6, dimnames = list(c(seq(1, 6, 1)), c(paste("V", seq(1, 6, 1), sep = "")))), caption = "Simulated Reference Sample Data", digits = 2) %>%
+  kable_classic(full_width = FALSE)
+```
+
+Just like standard datasets, each row corresponds to an individual while each column reflects their observed data on a specific variable. In this case, there are 6 columns with each reflecting a different presumptive test. The table shows just the first 6 simulated individuals from Condition 4, so there are an additional 994 rows that are not shown here for simplicity. As is apparent from just this small excerpt of data, the scores have reasonable variability in the sense that there are clearly simulated individuals with what would be considered highly abnormal scores (e.g., simulated scores in row 6 all being in the 30s). The fact that the simulation is capturing the phenomenon of some individuals having scores in the tails of the distribution is ideal.
+
+A central issue with using sample statistics is that they are usually imperfect approximations of the true population parameters. Bayesian methods have the advantage of being able to convert the subsequent uncertainty about what the true parameter values into a probability distribution specifying where we believe the parameter may be. This being said, the current model includes very little "evidence," or observed data (i.e., it is built to provide inferences on an *n* of 1). The consequence of this is that the priors specifying our beliefs about the population fully dominate our posterior beliefs as well, so there is very little change in the prior probability distribution for the parameters and the posterior distribution. The more direct implication of this is that the posterior distribution for the true mean population and standard deviation will be centered around the sample estimates. Since the parameter estimates are used by the model to compute the *z*-scores, any amount of bias in the sample statistics will be inherited by the *z*-scores. It is therefore helpful to examine the discrepancy between what the reference samples estimate for the parameters and their true values. The following table thus summarizes the population parameters and the simulated reference samples' estimates.
+
+```{r MeansDeviances, echo = FALSE}
+kable(matrix(c(1000,
+               50,
+               mean(C1_ref),
+               50 - mean(C1_ref),
+               10,
+               sd(C1_ref),
+               10 - sd(C1_ref),
+               
+               100,
+               50,
+               mean(C2_ref),
+               50 - mean(C2_ref),
+               10,
+               sd(C2_ref),
+               10 - sd(C2_ref),
+               
+               50,
+               50,
+               mean(C3_ref),
+               50 - mean(C3_ref),
+               10,
+               sd(C3_ref),
+               10-sd(C3_ref)),
+       ncol = 7,
+       nrow = 3,
+       byrow = TRUE,
+       dimnames = list(c("Condition 1", "Condition 2", "Condition 3"), c("Sample Size", "Parameter", "Sample Estimate", "Difference", "Parameter", "Sample Estimate", "Difference"))), caption = "Reference Sample Statistics Compared to Population Parameters for the Univariate Conditions", digits = 2) %>%
+  kable_classic(full_width = FALSE) %>%
+  add_header_above(c(" " = 2, "Means" = 3, "Std. Dev." = 3))
+
+kable(matrix(c(rep(1000, 6),
+               rep(100, 6),
+               rep(50, 6),
+               rep(50, 18),
+               colMeans(C4_ref),
+               colMeans(C5_ref),
+               colMeans(C6_ref),
+               50 - colMeans(C4_ref),
+               50 - colMeans(C5_ref),
+               50 - colMeans(C6_ref),
+               rep(10, 18),
+               apply(C4_ref, 2, sd),
+               apply(C5_ref, 2, sd),
+               apply(C6_ref, 2, sd),
+               10 - apply(C4_ref, 2, sd),
+               10 - apply(C5_ref, 2, sd),
+               10 - apply(C6_ref, 2, sd)),
+       ncol = 7,
+       nrow = 18,
+       byrow = FALSE,
+       dimnames = list(rep(paste("V", 1:6, sep = ""), 3), c("Sample Size", "Parameter", "Sample Estimate", "Difference", "Parameter", "Sample Estimate", "Difference"))), caption = "Reference Sample Statistics Compared to Population Parameters for the Multivariate Conditions", digits = 2) %>%
+  kable_classic(full_width = FALSE) %>%
+  add_header_above(c(" " = 2, "Means" = 3, "Std. Dev." = 3)) %>%
+  pack_rows("Condition 4", 1, 6) %>%
+  pack_rows("Condition 5", 7, 12) %>%
+  pack_rows("Condition 6", 13, 18)
+```
+
+As is apparent from the tables, there is some degree of estimation error in using the sample statistics, and this margin of error is not entirely consistent from test-to-test or condition-to-condition. This estimation error reflects some degree of realism in the simulations since it is not reasonable to assume that reference samples will produce highly accurate or unbiased parameter estimates. The magnitudes of these differences is also important to consider in the context of the recovery accuracy of the model-based *z*-scores (i.e., the RMSE, MAE, and ECR of the *z*-scores). To help evaluate the relative influence of sample estimation error and then the recovery of *z*-scores reported in the manuscript, the following table shows the RMSE and MAE of the mean and standard deviation estimates *z*-scores estimated using the sample statistics compared to the true *z*-scores computed using the population parameters.
+
+```{r MAEmnStdv, echo = FALSE}
+kable(matrix(c(mean(abs(((C1_result[, 1]-mean(C1_ref))/sd(C1_ref)) -C1_result[, 8])),
+               sqrt(mean((((C1_result[, 1]-mean(C1_ref))/sd(C1_ref))-C1_result[, 8])^2)),
+               
+               mean(abs(((C2_result[, 1]-mean(C2_ref))/sd(C2_ref)) -C2_result[, 8])),
+               sqrt(mean((((C2_result[, 1]-mean(C2_ref))/sd(C2_ref))-C2_result[, 8])^2)),
+               
+               mean(abs(((C3_result[, 1]-mean(C3_ref))/sd(C3_ref)) -C3_result[, 8])),
+               sqrt(mean((((C3_result[, 1]-mean(C3_ref))/sd(C3_ref))-C3_result[, 8])^2))),
+       nrow = 2,
+       ncol = 3,
+       byrow = FALSE,
+       dimnames = list(c("MAE", "RMSE"), paste("Condition", 1:3))), caption = "Z-score Estimates using Sample Statistics in Univariate Conditions", digits = 2) %>%
+  kable_classic(full_width = FALSE)
+
+kable(matrix(c(colMeans(abs(((C4_result[, 1:6]-colMeans(C4_ref))/apply(C4_ref, 2, sd)) -C4_result[, 43:48])),
+               sqrt(colMeans((((C4_result[, 1:6]-colMeans(C4_ref))/apply(C4_ref, 2, sd))-C4_result[, 43:48])^2)),
+  
+               colMeans(abs(((C5_result[, 1:6]-colMeans(C5_ref))/apply(C5_ref, 2, sd)) -C5_result[, 43:48])),
+               sqrt(colMeans((((C5_result[, 1:6]-colMeans(C5_ref))/apply(C5_ref, 2, sd))-C5_result[, 43:48])^2)),
+               
+               colMeans(abs(((C6_result[, 1:6]-colMeans(C6_ref))/apply(C6_ref, 2, sd)) -C6_result[, 43:48])),
+               sqrt(colMeans((((C6_result[, 1:6]-colMeans(C6_ref))/apply(C6_ref, 2, sd))-C6_result[, 43:48])^2))),
+       nrow = 6,
+       ncol = 6,
+       byrow = TRUE,
+       dimnames = list(rep(c("MAE", "RMSE"), 3), paste("V", 1:6, sep = ""))), caption = "Z-score Estimates using Sample Statistics in Multivariate Conditions", digits = 2) %>%
+  kable_classic(full_width = FALSE) %>%
+  pack_rows("Condition 4", 1, 2) %>%
+  pack_rows("Condition 5", 3, 4) %>%
+  pack_rows("Condition 6", 5, 6)
+```
+
+Compared to the MAE and RMSE results for the model-estimated *z*-scores reported in the manuscript, there appears to actually be greater average error when using just the sample statistic estimates. This is an important consideration as it suggests that there is very little bias in the *z*-score estimates beyond the inherent bias that was brought in from the error in sample statistics as point estimates of the parameters.
+
+# Simulation Results
+
+The purpose of the following section is to provide some greater depth of exploration for the simulation results reported in the manuscript. First, the manuscript collapses the overall recovery information, which collapses across tests in the multivariate conditions. Second, the correlation analyses reports a simple range across tests. The first part of this section is thus just an expansion of the results that were collapsed into a single summary table.
+
+```{r RecoveryResults, echo = FALSE}
+kable(matrix(c(colMeans(abs(C4_result[, 7:12] -C4_result[, 43:48])),
+               sqrt(colMeans((C4_result[, 7:12] -C4_result[, 43:48])^2)),
+  
+               colMeans(abs(C5_result[, 7:12] -C5_result[, 43:48])),
+               sqrt(colMeans((C5_result[, 7:12] -C5_result[, 43:48])^2)),
+               
+               colMeans(abs(C6_result[, 7:12] -C6_result[, 43:48])),
+               sqrt(colMeans((C6_result[, 7:12] -C6_result[, 43:48])^2))),
+       nrow = 6,
+       ncol = 6,
+       byrow = TRUE,
+       dimnames = list(rep(c("MAE", "RMSE"), 3), paste("V", seq(1, 6, 1), sep = ""))), caption = "Test-wise Error in Z-score Estimates for Multivariate Conditions", digits = 2) %>%
+  kable_classic(full_width = FALSE) %>%
+  pack_rows("Condition 4", 1, 2) %>%
+  pack_rows("Condition 5", 3, 4) %>%
+  pack_rows("Condition 6", 5, 6)
+```
+
+```{r CorrelationResults, echo = FALSE}
+kable(matrix(c(C4_Recovery$Correlations$Pearson,
+               C4_Recovery$Correlations$Kendall,
+  
+               C5_Recovery$Correlations$Pearson,
+               C5_Recovery$Correlations$Kendall,
+               
+               C6_Recovery$Correlations$Pearson,
+               C6_Recovery$Correlations$Kendall),
+       ncol = 12,
+       nrow = 3,
+       byrow = TRUE,
+       dimnames = list(c("Condition 4", "Condition 5", "Condition 6"), rep(paste("V", seq(1:6), sep = ""), 2))), caption = "Correlation Results Condition", digits = 4) %>%
+  kable_classic(full_width = FALSE) %>%
+  add_header_above(c(" " = 1, "Pearson" = 6, "Kendall" = 6))
+```
+
+Another important area to extend upon, though not in as much detail as the rest of simulation, is the posterior predictive checks. Where the empirical coverage range tells some information about the potential distribution of the posterior, the current study has relatively limited capacity to do a more traditional posterior check. The reason for this limitation is that we focus only on cases where *n* = 1, so there is not a distribution of raw scores to observe in that case. To circumvent this limitation, we consider the WAIS manual data again and simulate a sample of scores (*n* = 100) using those data. Against this distribution of simulated scores, we plot 50 random samples from the posterior draws of the model fit in the manuscript. For clarification, this posterior is the same one used to examine the equivalence of the model's predictions to the WAIS manual's baserates/quantiles. For simplicity, results are shown for only one subtest (i.e., Block Design).
+
+```{r PosteriorCheck, echo = TRUE}
+#quietly load in rstan package
+suppressPackageStartupMessages(library(rstan, quietly = TRUE, verbose = FALSE))
+
+#quietly load in bayesplot package
+suppressPackageStartupMessages(library(bayesplot, quietly = TRUE, verbose = FALSE))
+
+#quietly load in MASS package
+suppressPackageStartupMessages(library(MASS, quietly = TRUE, verbose = FALSE))
+
+#simulate a random sample from the WAIS manual
+raw <- round(mvrnorm(100, WS_nor_mns, WS_nor_cov, empirical = TRUE))
+  
+#get 50 random samples from the posterior draws
+posteriors <- matrix(0, ncol = 100, nrow = 50)
+for(i in 1:50) {
+  posteriors[i, ] <- t(as.matrix(post_raw[sample.int(nrow(post_raw), 100, replace = FALSE), 1]))
+}
+
+#view posterior predictive check
+ppc_dens_overlay(raw[, 1], round(posteriors))
+```
+
+The results above are clearly limited by the fact that they are drawn from simulation data only; however, they can still be informative with regard to the overall performance of the model. Briefly, a posterior predictive check plots randomly selected "samples" from the posterior distribution (i.e., `yrep`) against the empirical distribution of the raw data (i.e., `y`). In well-performing models, the posterior should create predictions that mirror that of the raw data. In this case, we can see that the model overall does a good job of creating predictions that are near or above the average as indicated by the fact that the `yrep` density plots largely overlap the "observed" data in those areas (we can think of the `yrep` lines as almost like credible or confidence intervals). In contrast, the model seemingly overestimates the number of below average scores, though the model performs overall quite well in re-capturing the overall shape and distribution of the "observed" data.
