@@ -6,8 +6,8 @@ This repository serves as a central location for R scripts and documentation for
 
 |Resource Available|Link|
 |---|---|
-|R Code|[Here](https://github.com/w-goette/BayesianSingleCaseClassification/tree/main/R%20Script%20Files)|
-|Supplementary Materials|TBD|
+|R Code|[Here](https://github.com/w-goette/Single-Case-Classification/tree/main/R%20Script%20Files)|
+|Supplementary Materials|[Here](https://github.com/w-goette/Single-Case-Classification/tree/main/Markdown%20Files)|
 |Introduction to the Model|TBD|
 |What can we learn from a simulation study?|TBD|
 |Final Publication|TBD|
