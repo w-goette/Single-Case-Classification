@@ -265,7 +265,7 @@ kable(matrix(c(colMeans(abs(((C4_result[, 1:6]-colMeans(C4_ref))/apply(C4_ref, 2
   pack_rows("Condition 6", 5, 6)
 ```
 
-Compared to the MAE and RMSE results for the model-estimated *z*-scores reported in the manuscript, there appears to actually be greater average error when using just the sample statistic estimates. This is an important consideration as it suggests that there is very little bias in the *z*-score estimates beyond the inherent bias that was brought in from the error in sample statistics as point estimates of the parameters.
+Compared to the MAE and RMSE results for the model-estimated *z*-scores reported in the manuscript, there appears to be appreciable difference in the accuracy of the estimates. This is not entirely unsurprising because the sample statistics are taken as informative priors for the parameter estimates, so the final parameter estimates used for the computation of *z*-scores are all centered around the sample statistics with little deviation from them. The relative advantage of the model over a naive use of sample statistics is that the model is able to pass the uncertainty of the parameter estimates to the uncertainty of the *z*-scores as well. Alternative methods, such as those described by Crawford and colleagues as cited in the manuscript, require the transformation to a *t*-score metric in order to account for the uncertainty in the estimation of $\sigma$.
 
 # Simulation Results
 
