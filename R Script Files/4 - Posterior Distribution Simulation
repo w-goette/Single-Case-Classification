@@ -49,11 +49,8 @@ stan_sample <- sampling(stan_model, data = stan_dat, seed = SEED) #2000 iteratio
 #extract posterior distribution of raw scores
 post_raw <- as.data.frame(extract(stan_sample, pars = "rScore"))
 
-#compute expected percentile of each raw score
-round(colMeans(round(post_raw, 0) <= stan_dat$raw_x)*100, 0)
-
 #visualize scores
-ppc_intervals(stan_dat$raw_x, as.matrix(round(post_raw)), prob = 0.50, prob_outer = 0.95) +
+ppc_intervals(stan_dat$raw_x, as.matrix(round(post_raw)), prob = 0.50, prob_outer = 0.95, size = 1.5, fatten = 3.5) +
   scale_x_continuous(
     labels = c("BD", "SI", "DS", "MR", "VC", "AR", "SS", "VP", "IN", "CD"),
     breaks = 1:10
@@ -71,14 +68,34 @@ ppc_intervals(stan_dat$raw_x, as.matrix(round(post_raw)), prob = 0.50, prob_oute
 ppc_stat(stan_dat$raw_x, as.matrix(post_raw), stat = "mean") +
   ggtitle("Visualization of Average of Subtests to Average of Population")
 
+#compute percentiles from sum of posterior predicted subtest scores (10 point intervals)
+round(ecdf(rowSums(post_raw))(seq(10, 190, 10))*100, 1)
+
 #compute summary statistics of difference for DS < AR
 mean(post_raw[post_raw[, 3]<post_raw[, 6], 3]-post_raw[post_raw[, 3]<post_raw[, 6], 6])
 sd(post_raw[post_raw[, 3]<post_raw[, 6], 3]-post_raw[post_raw[, 3]<post_raw[, 6], 6])
 median(post_raw[post_raw[, 3]<post_raw[, 6], 3]-post_raw[post_raw[, 3]<post_raw[, 6], 6])
-ecdf(round(post_raw[, 3])-round(post_raw[, 6]))(seq(-18, -1, 1))
+round(ecdf(round(post_raw[, 3])-round(post_raw[, 6]))(seq(-18, -1, 1))*100, 1)
 
 #compute summary statistics of difference for DS > AR
 mean(post_raw[post_raw[, 3]>post_raw[, 6], 3]-post_raw[post_raw[, 3]>post_raw[, 6], 6])
 sd(post_raw[post_raw[, 3]>post_raw[, 6], 3]-post_raw[post_raw[, 3]>post_raw[, 6], 6])
 median(post_raw[post_raw[, 3]>post_raw[, 6], 3]-post_raw[post_raw[, 3]>post_raw[, 6], 6])
-ecdf(round(post_raw[, 3])-round(post_raw[, 6]))(seq(1, 18, 1))
+round(mean(round(post_raw[, 3])-round(post_raw[, 6]) >= 1)*100, 1)
+round(mean(round(post_raw[, 3])-round(post_raw[, 6]) >= 2)*100, 1)
+round(mean(round(post_raw[, 3])-round(post_raw[, 6]) >= 3)*100, 1)
+round(mean(round(post_raw[, 3])-round(post_raw[, 6]) >= 4)*100, 1)
+round(mean(round(post_raw[, 3])-round(post_raw[, 6]) >= 5)*100, 1)
+round(mean(round(post_raw[, 3])-round(post_raw[, 6]) >= 6)*100, 1)
+round(mean(round(post_raw[, 3])-round(post_raw[, 6]) >= 7)*100, 1)
+round(mean(round(post_raw[, 3])-round(post_raw[, 6]) >= 8)*100, 1)
+round(mean(round(post_raw[, 3])-round(post_raw[, 6]) >= 9)*100, 1)
+round(mean(round(post_raw[, 3])-round(post_raw[, 6]) >= 10)*100, 1)
+round(mean(round(post_raw[, 3])-round(post_raw[, 6]) >= 11)*100, 1)
+round(mean(round(post_raw[, 3])-round(post_raw[, 6]) >= 12)*100, 1)
+round(mean(round(post_raw[, 3])-round(post_raw[, 6]) >= 13)*100, 1)
+round(mean(round(post_raw[, 3])-round(post_raw[, 6]) >= 14)*100, 1)
+round(mean(round(post_raw[, 3])-round(post_raw[, 6]) >= 15)*100, 1)
+round(mean(round(post_raw[, 3])-round(post_raw[, 6]) >= 16)*100, 1)
+round(mean(round(post_raw[, 3])-round(post_raw[, 6]) >= 17)*100, 1)
+round(mean(round(post_raw[, 3])-round(post_raw[, 6]) >= 18)*100, 1)
