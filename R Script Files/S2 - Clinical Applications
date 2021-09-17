@@ -21,7 +21,7 @@ The general purpose of this document is to provide clinicians with the basic too
 The very first thing that needs to be done is to make sure that all of the needed R packages are ready to use in the R environment. If this is the very first time that these packages are being used, either because R has just been downloaded or because R has been updated, then these libraries have to be first installed. These libraries can be installed as follows:
 
 ```{r Install, eval = FALSE, echo = TRUE}
-install.packages(c("rstan", "bayesplot", "shinystan"), dependencies = TRUE)
+install.packages(c("rstan", "bayesplot", "shinystan", "bayestestR", "see"), dependencies = TRUE)
 ```
 
 After the packages have been install, they just need to be loaded in every time that a new R session is started (including the session in which the packages were downloaded). Loading the packages is similarly easy:
@@ -30,9 +30,13 @@ After the packages have been install, they just need to be loaded in every time 
 library(rstan)
 library(bayesplot)
 library(shinystan)
+library(bayestestR)
+library(see)
 ```
 ```{r ActualLoad, warning = FALSE, echo = FALSE}
 suppressPackageStartupMessages(library(rstan, quietly = TRUE, verbose = FALSE))
+suppressPackageStartupMessages(library(bayestestR, quietly = TRUE, verbose = FALSE))
+suppressPackageStartupMessages(library(see, quietly = TRUE, verbose = FALSE))
 ```
 
 Once the appropriate packages are install and loaded, the model can be prepared and run.
@@ -147,7 +151,7 @@ After a few minutes, the model should finish compiling. If you intend on using t
 
 In the above text for the model, there is a block that defines the data (`data{ ... text ... }`). This block is aptly named the data block and tells Stan what the input data should look like. Starting at the top of this block and going down that column of text, the model expects a positive integer of at least 1 (`int<lower=1>`) telling it the number of populations to compare, a positive integer (`int<lower=0>`) corresponding to the number of tests (or dimensions) that are being entered, a vector of obtained scores, a list of row vectors for sample means corresponding to these tests, a list of row vectors of sample standard deviations corresponding to the tests, a list of correlation matrices for these tests, the number of individuals used in these samples, the prior that will be used for the correlation matrix, and the pre-test probabilities for each population.
 
-To contextualize these values, say that it is desired to examine WAIS scores. Say as well that we are interested in 5 primary diagnostic possibilities, so in this case, we would need to specify this as `pop <- 5`. Assuming we administer the core subtests only, there are 10 tests of interests, so when we run the model, we will need to specify that `dim <- 10`. It is difficult to interpret WAIS scores if there are no scores, so clearly an individual has been administered the WAIS and obtained certain scaled scores as a result. These specific results will be entered into a string: `raw_x <- c(10, 12, 8, 13, 9, 12, 11, 10, 8, 10)` as an example. Lets say that the first reference sample that we are interested in evaluating is just the normative sample. In this case, the reference sample means are all 10 with standard deviations of 3: `ref_mn <- c(10, 10, 10, 10, 10, 10, 10, 10, 10, 10)` and `ref_stdv <- c(3, 3, 3, 3, 3, 3, 3, 3, 3, 3)`. There would then need to be 4 other reference means and standard deviations to enter since we defined the number of populations as 5 (i.e., normal + 4 other possibiliteis). In the event that you are examining reference means or standard deviations that are the same for every test (like in this particular case), then an easier way of specifying this is to use the `rep` function, which is short for repeat. In this case, for example, we could do the following: `ref_mn <- rep(10, dim)` and `ref_stdv <- rep(3, dim)`. These statements tell R to repeat the value 10 and 3, respectively, both however many times `dim` has been defined as (as shown earlier in this paragraph, `dim` = 10 for this case). The next required piece of information is the correlation matrix for these 10 tests. This information is usually available in the test manual. A full entry is shown later, so for the sake of space, it is not repeated here. The last information about the reference sample being used is just its *N*. For illustration purposes, we will assume that our particular age-based cell in the normative manual was based on 100 individuals: `ref_N <- 100`. The next data requirement is unrelated to the sample and individual. Currently, there is not sufficient evidence on what $\eta$ values may be best to use in which circumstances, so it is recommended that this just be defined as 1 routinely: `eta <- 1`. Finally, if there is any pre-test probability information to include, then this can be specified by passing a vector to the `theta` argument. In this case, let's say that we have no *a priori* reason to believe that any single diagnosis is more likely than the others. We can specify this uniform pre-test probability as follows: `theta <- rep(1/5, 5)`. 
+To contextualize these values, say that it is desired to examine WAIS scores. Say as well that we are interested in 5 primary diagnostic possibilities, so in this case, we would need to specify this as `pop <- 5`. Assuming we administer the core subtests only, there are 10 tests of interests, so when we run the model, we will need to specify that `dim <- 10`. It is difficult to interpret WAIS scores if there are no scores, so clearly an individual has been administered the WAIS and obtained certain scaled scores as a result. These specific results will be entered into a string: `raw_x <- c(10, 12, 8, 13, 9, 12, 11, 10, 8, 10)` as an example. Lets say that the first reference sample that we are interested in evaluating is just the normative sample. In this case, the reference sample means are all 10 with standard deviations of 3: `ref_mn <- c(10, 10, 10, 10, 10, 10, 10, 10, 10, 10)` and `ref_stdv <- c(3, 3, 3, 3, 3, 3, 3, 3, 3, 3)`. There would then need to be 4 other reference means and standard deviations to enter since we defined the number of populations as 5 (i.e., normal + 4 other possibilities). In the event that you are examining reference means or standard deviations that are the same for every test (like in this particular case), then an easier way of specifying this is to use the `rep` function, which is short for repeat. In this case, for example, we could do the following: `ref_mn <- rep(10, dim)` and `ref_stdv <- rep(3, dim)`. These statements tell R to repeat the value 10 and 3, respectively, both however many times `dim` has been defined as (as shown earlier in this paragraph, `dim` = 10 for this case). The next required piece of information is the correlation matrix for these 10 tests. This information is usually available in the test manual. A full entry is shown later, so for the sake of space, it is not repeated here. The last information about the reference sample being used is just its *N*. For illustration purposes, we will assume that our particular age-based cell in the normative manual was based on 100 individuals: `ref_N <- 100`. The next data requirement is unrelated to the sample and individual. Currently, there is not sufficient evidence on what $\eta$ values may be best to use in which circumstances, so it is recommended that this just be defined as 1 routinely: `eta <- 1`. Finally, if there is any pre-test probability information to include, then this can be specified by passing a vector to the `theta` argument. In this case, let's say that we have no *a priori* reason to believe that any single diagnosis is more likely than the others. We can specify this uniform pre-test probability as follows: `theta <- rep(1/5, 5)`. 
 
 The following code provides an empty template for entering in data as described above. Comments are present to help clarify what information would be added. These comments should be deleted and replaced with the needed values.
 
@@ -244,7 +248,7 @@ Assuming that the data are entered using the general template provided above, th
 stan_RBANS <- sampling(stan_model, data = list(pop = pop, dim = RBANS_dim, raw_x = raw_x, ref_mn = RBANS_mn, ref_stdv = RBANS_stdv, cor_mat = RBANS_mat, ref_N = RBANS_N, eta = eta, theta = theta))
 ```
 
-In R, there is no warning that an object is about to be rewritten. Operating systems like Windows make us acutely aware anytime that we try to save a document with the same name as an existing one, but R has no such good graces. As a result, if we have multiple reference samples but enter each of these samples means under the same named object `ref_mn`, then which ever is the last sample to have been entered will be what is saved as `ref_mn` and there will be no trace of any of the previous ones. This is important for case-by-case use since if one client's data is overwritten by another's, then there's no way to go back to the old data unless it is re-entered. This is particularly relevant for defining common tests/batteries or diangostic contrasts since it could result is a lot of redundant work if `ref_mn` is defined each time versus giving it a special name (e.g., `RBANS_mns`). Similarly, if a client's data needs to be run again or checked later, then there's not a way to cycle back to it unless it was saved as a specific object in the R environment (e.g., `9023856_10-05-2019 <- sampling(...)` where the first digits may refer to an MRN that is then followed by the assessment date).
+In R, there is no warning that an object is about to be rewritten. Operating systems like Windows make us acutely aware anytime that we try to save a document with the same name as an existing one, but R has no such good graces. As a result, if we have multiple reference samples but enter each of these samples means under the same named object `ref_mn`, then which ever is the last sample to have been entered will be what is saved as `ref_mn` and there will be no trace of any of the previous ones. This is important for case-by-case use since if one client's data is overwritten by another's, then there's no way to go back to the old data unless it is re-entered. This is particularly relevant for defining common tests/batteries or diagnostic contrasts since it could result is a lot of redundant work if `ref_mn` is defined each time versus giving it a special name (e.g., `RBANS_mns`). Similarly, if a client's data needs to be run again or checked later, then there's not a way to cycle back to it unless it was saved as a specific object in the R environment (e.g., `9023856_10-05-2019 <- sampling(...)` where the first digits may refer to an MRN that is then followed by the assessment date).
 
 Over time, it can be possible to start accumulating large numbers of objects stored in the R environment, particularly depending on one's needs and naming conventions. There is nothing inherently wrong with this, but if the models are run repeatedly in the same R environment, then there may quickly become an overabundance of old and new objects that cause the file to become very large and the environment messy. A good practice therefore would be to retain a few commonly used objects but then clear out any that are not going to be used anymore. Objects can be removed/deleted from R with the function `rm()`. Here's an example:
 
@@ -319,7 +323,7 @@ In the event that there is evidence that the model may not have stabilized (i.e.
 
 A powerful advantage of Bayesian methods in diagnostic modeling is the ability to utilize pre-test probabilities to arrive at individualized post-test probabilities of diagnosis/disease. In the best case scenario, a client may present with a criterion-based pre-test risk. For example, the individual may have been administered a cognitive screening test like the MoCA and failed it at a certain threshold. This information could be converted to a pre-test probability for cognitive impairment, or in the presence of additional information, for certain etiologies of impairment. Alternatively, an individual's probability of belonging to one of two diagnostic groups may be estimated using a logistic regression before the neuropsychological tests are interpreted. The results of testing could then be combined with the pre-test probability estimate from the logistic regression. In the simplest case, however, the pre-test probability is just the prevalence of the diagnosis given the relevant demographic traits of the individual. 
 
-Specifying pre-test probabilities is very simple in the model syntax as it involves just changing the theta argument: `theta <- c(1/3, 1/3, 1/3)` versus `theta <- c(1/2, 1/4, 1/4)`. Where this becomes particularly relevant, however, is when we must "chain" several tests in the battery together. In the simluation study, we had data for the RBANS and the WAIS across 3 shared conditions (normal cognition, MCI, and AD), but there wasn't a single data source for the RBANS + WAIS in all three conditions. As a result, we had to examine the WAIS in those 3 conditions first, extract the new post-test probabilities from that analysis, and then examine the RBANS in those 3 conditions. In this case, pre-test probabilities based on the prevalence of the various diagnoses given the "client's" age were updated by the WAIS subtests (resulting in a post-test probability based on WAIS performance) and then those post-test probabilities were treated as pre-test probabilities for the RBANS that were in kind updated into the final set of post-test probabilities. This chaining of pre-/post-test probabilities and updating diagnostic beliefs can be repeated an arbitrary number of times. The following code demonstrates how to do this within R.
+Specifying pre-test probabilities is very simple in the model syntax as it involves just changing the theta argument: `theta <- c(1/3, 1/3, 1/3)` versus `theta <- c(1/2, 1/4, 1/4)`. Where this becomes particularly relevant, however, is when we must "chain" several tests in the battery together. In the simulation study, we had data for the RBANS and the WAIS across 3 shared conditions (normal cognition, MCI, and AD), but there wasn't a single data source for the RBANS + WAIS in all three conditions. As a result, we had to examine the WAIS in those 3 conditions first, extract the new post-test probabilities from that analysis, and then examine the RBANS in those 3 conditions. In this case, pre-test probabilities based on the prevalence of the various diagnoses given the "client's" age were updated by the WAIS subtests (resulting in a post-test probability based on WAIS performance) and then those post-test probabilities were treated as pre-test probabilities for the RBANS that were in kind updated into the final set of post-test probabilities. This chaining of pre-/post-test probabilities and updating diagnostic beliefs can be repeated an arbitrary number of times. The following code demonstrates how to do this within R.
 
 ```{r PostTestExtract, echo = TRUE, eval = FALSE}
 #run the sampler and estimate the posteriors 
@@ -353,13 +357,13 @@ As is apparent from the plot of the difference, there is a fair amount of probab
 #convert the differences into percentiles
 posterior_contrast <- round(posterior_dist[, 2]) - round(posterior_dist[, 5])
 
-#find the largest percentile that is less than or equal to -10
+#find the percentile for a difference of -3
 ecdf(posterior_contrast)(-3)
 
-#find the largest percentile that is less than or equal to 0
+#find the percentile for a difference of 0
 ecdf(posterior_contrast)(0)
 
-#find the largest percentile that is less than or equal to 10
+#find the percentile for a difference of 3
 ecdf(posterior_contrast)(3)
 ```
 
@@ -372,3 +376,106 @@ quantile(posterior_contrast, c(0.025, 0.975))
 Using the results above, if someone had a Similarities and Vocabulary discrepancy of -5, then this would be considered statistically significant at the .05 level. Just for transparency, the WAIS critical values are not based on the sampling distributions of the statistics but instead on the measurement distributions (i.e., they take into account the standard error of measurement). As a result, these critical values likely do not equate to those reported in the manual as they are answering a different question. The model does not currently take into consideration measurement error.
 
 Using these methods of inference on the posterior distribution, it is possible to arrive at a general idea of how rare certain differences may be in the population. This method has unique potential, but there is additional research needed to clarify whether the posterior predictive distributions convey the same information in clinical data as they have in simulated normal distributions.
+
+Another possibility that may be of interest to clinicians is formally testing the amount of evidence for one hypothesis over another. So far, we have focused on point-estimates on the raw scores; however, better inference can be conducted on the *z*-scores since the model produces a distribution of credible *z*-scores, reflecting uncertainty about the true value of this metric. We will highlight two different examples of how to conduct inference on these *z*-scores. The first is a more traditional statistical inference where we are just concerned with whether certain values occur and its probability of occurring. The second is more Bayesian-specific and allows for quantification of evidence for certain hypotheses. To illustrate how to do this inference, we need to first check what the *z*-scores for the model that we have been examining actually is. The code below will provide a simple summary (mean + 95% credible interval bounds) of the estimated *z*-scores for every population entered into the model (in this example, only a single population was used, so only one set of *z*-scores is returned):
+
+```{r Zscores}
+summary(stan_sample, pars = "Zscore")$summary[, c(1, 4, 8)]
+```
+
+This particular simulated "individual" had a markedly poorer performance on Information than the other subtests, so we will focus on this subtest for our inferences. The first thing to notice is that none of the 95% credible interval includes 0, so we can probably safely reject the null hypothesis that the performance is "average" (i.e., a *z*-score of exactly zero). We can, however, go even further in our inferences since we have a full posterior distribution to examine. One thing we may ask is what is the probability that the score is zero or something close to zero. This usually involves defining something called the region of practical equivalence (or ROPE). ROPEs make for more sensible hypothesis testing because it is rarely of interest what the probability of an exact value is (e.g., what the probability of a score being zero). In this case, let us say that a *z*-score in the range of -0.10 and 0.10 are practically equivalent to zero. The following code will return the probability that the *z*-score for Information is practically no different from zero.
+
+``` {r PosteriorZscore_ROPEzero}
+#get posterior distribution of z-score estimates
+posterior_dist <- as.data.frame(extract(stan_sample, pars = "Zscore"))
+
+#compute probability that Information (Zscore #9) is between -0.10 and 0.10
+mean(posterior_dist[, 9] >= -0.10 & posterior_dist[, 9] <= 0.10)
+```
+
+This results indicates that there is an estimated probability of zero, though a probability can truly never be zero. It can be helpful sometimes to visualize these estimates, and the combination of the `bayestestR` and `see` packages facilitates some fairly easily plotting methods. The following code produces visualizations of the probability of direction (i.e., the probability that a parameter is either positive or negative) and a few different ways of evaluating the ROPE.
+
+```{r PosteriorZscore_Plots1}
+#probability of direction plot
+plot(p_direction(posterior_dist))
+
+#practical significance plot
+plot(p_significance(posterior_dist))
+
+#ROPE plot
+plot(rope(posterior_dist, ci = c(0.90, 0.95)))
+```
+
+These plots all help to explore various aspects of the data and performance. The probability of direction is directly proportional to a traditional *p*-value as it reflects the probability that a parameter is not zero (i.e., that it has a direction -- either positive or negative). The practical significance helps to visualize the point estimate of zero (the dotted vertical line) but then also how much of the posterior distribution is within the ROPE. This particular test visualizes just a one-sided test based on the probability of direction. So, if the majority of the posterior distribution is negative, then only that negative portion is tested against the ROPE. Finally, the ROPE plot shows the band corresponding to the ROPE (by default this is -0.10 to 0.10), and the plot also automatically color coordinates the requested credible intervals (in this case, the 90% and 95% were requested via the argument `ci = c(0.90, 0.95)`). As can be seen, this plot is useful for visualizing varying levels of certainty about an effect. For example, looking at z-score posterior distributions for tests 3 and 6 (Digit Span and Arithmetic, respectively), the ROPE falls well within the distributions' regions of highest probability suggesting that there is high probability the the *z*-scores are likely zero or practically zero. In contrast, consider the distribution for test 4's *z*-score (Matrix Reasoning), in this case, the ROPE only falls just beyond the 95% credible intervals. This result can be interpreted directly in terms of probability: the probability that this *z*-score is not practically zero is >0.95.
+
+It is likely that clinicians will not be frequently using these tests over such narrow ROPEs as it is not entirely common to need to test against a specific score; instead, it may be more helpful to think about the probability that a score falls within a particular qualitative range. In this context, we might consider a score to be "average" if is between 90 and 109, or about +/- 1 SD. In the same manner as before, we can compute the probability of being in this ROPE as follows:
+
+```{r PosteriorZscore_ROPEaverage}
+#compute probability that Information (Zscore #9) is between -1 and 1
+mean(posterior_dist[, 9] >= -1.00 & posterior_dist[, 9] <= 1.00)
+
+#visualize the new ROPE for all tests
+plot(rope(posterior_dist, range = c(-1, 1), ci = c(0.90, 0.95)))
+```
+
+Once again, we see that there is a very small probability that the Information score is in the "average" range as defined by the rough +/- 1 SD rule. The ROPE visualizations also confirm this, and based on this view in particular, it becomes clear that the Information subtest is likely a relative weakness for this simulated "individual." While working with probabilities is helpful, it can sometimes be more useful to think about clinical hypotheses in terms of null and alternative hypotheses. For example, the null hypothesis might be that a score is "average" relative to a target population (in this case, just the normative population was used), and an alternative might be the observed *z*-score. A method for comparing the evidence for a null hypothesis to the alternative hypothesis in the Bayesian framework is the aptly named Bayes factor. A simple computation for this is the ratio of the odds of the null hypothesis to the odds of the alternative. Conveniently, these probabilities previously computed can be converted directly to odds via the formula $\frac{prob}{1-prob}$. The following code shows how to conduct the Bayes factor in two parameterizations: one showing the evidence favoring the null and the other showing the evidence favoring the alternative.
+
+```{r PosteriorZscore_BayesFactor}
+#define probabilities
+pN <- mean(posterior_dist[, 9] >= -1.00 & posterior_dist[, 9] <= 1.00)
+pA <- 1-pN
+
+#convert probabilities to odds
+oN <- pN/(1-pN)
+oA <- pA/(1-pA)
+
+#BF10 (null to alternative)
+BF10 <- oN/oA
+
+#BF01 (alternative to null)
+BF01 <- oA/oN
+
+#show the results
+BF10
+BF01
+
+#show that the results are inversely related
+1/BF10 == BF01
+```
+
+There are two things to observe regarding these analyses. First, the Bayes factor of evidence favoring the null hypothesis will always equal the inverse of Bayes factor of evidence favoring the alternative, so it is only ever necessary to compute one Bayes factor. Second, when a Bayes factor is greater than one then this is taken as positive evidence of that hypothesis over the other. The larger this number, the stronger the evidence for the hypothesis. In this way, the Bayes factor can be thought of as an effect size for a hypothesis with very large values reflecting robust evidence that the hypothesis of interest is true. A Bayes factor could be clinically relevant for a couple of reasons. For one, it may of interest to show that a score on a particular test (or combination of tests) is within a certain range. This might occur when specific score ranges are needed for diagnoses or if performance from prior testing is used for comparison (e.g., is current testing within the same interval as prior testing?). A strength of the Bayes factor is that it is able to quantify support for a null hypothesis, which is not possible in frequentist methods. In frequentist methodologies, to perform a kind of equivalence testing would involve specialized methods (e.g., TOSTs). Another potential application of Bayes factors might arise in validity testing. When validity testing is highly disparate from expectations, it would be possible to test the amount of evidence favoring an abnormal performance to a normal one. A final application that readily comes to mind is in the case of score discrepancies. One might imagine comparing a predicted score (and its prediction interval) to observed scores to test whether there is a difference in these.
+
+These Bayes factors are a posterior-driven estimate as they include limited prior information. We can improve the Bayes factor estimates by specifying a prior distribution. Since these are *z*-scores, a reasonable prior distribution to use for this purpose is a standard normal distribution (i.e., normal distribution with mean of 0 and standard deviation 1). Using this prior, we can get more informative Bayes factors using the following code via the `bayestestR` package:
+
+```{r TrueBF}
+#compute Bayes factors given the assumed prior
+bayesfactor_parameters(posterior_dist[, 9], prior = distribution_normal(20000, 0, 1), null = c(-1, 1))
+
+#plot the Bayes factor
+plot(bayesfactor_parameters(posterior_dist[, 9], prior = distribution_normal(20000, 0, 1), null = c(-1, 1)))
+```
+
+As can be seen from this updated Bayes factor, the evidence favoring the alternative hypothesis is still very strong but much more conservative than the posterior-driven estimate. In all cases, it is more accurate to specify a prior distribution and should be the default approach, particularly because we know that a good prior should be the standard normal distribution. The plot also is very helpful in understanding what the Bayes factor is telling us. What we had calculated before was an assumed uniform distribution with range from -1 to 1 as the null hypothesis, but this ignores that a standard normal distribution (a) extends beyond this range and (b) does not place equal probability over all values between -1 and 1. With a better, more appropriate prior distribution assumed, the Bayes factor is now the ratio of odds that a value between -1 and 1 occurs in the standard normal prior (null) distribution to the odds that a value is in that range in the posterior (alternative) distribution. This comparison is much more sensible and capitalizes on the fact that Bayesian methods allow us to make inferences directly on distributions rather than point estimates and then assumptions about the sampling distributions. The plot of this Bayes factor shows the posterior (red) and prior (blue) distributions and then the range in which we are testing against (the shaded box between -1 and 1). Visually, it is clear that what we are considering to be "null" values are much more common in the prior distribution than the posterior, meaning that we should be skeptical that the posterior estimate equivalent to the null hypothesis. Put differently, we have strong evidence that the simulated "individual's" Information performance is significantly different from "average" when we treated average as scores within one standard deviation of the normative sample.
+
+We will now apply these methods to some further exploration to highlight the ways in which the posterior can be used to make detailed inferences about scores. So far, we have been examining just single scores or displaying descriptive plots for all tests. One thing that clinicians may be interested in is extending these methods to combinations of tests such as what we had described earlier. To showcase these applications, we consider a test for whether the Information performance is significantly different from the average subtest performance. For this, we will compute the average for all subtests, including Information.
+
+```{r InfMeanDiff}
+#compute mean and standard deviation of all subtests
+SubMean <- mean(unlist(posterior_dist))
+SubSD <- sd(unlist(posterior_dist))
+
+#probability that the average subtest performance is greater than Information
+mean(SubMean > posterior_dist[, 9])
+
+#compute Bayes factor (assuming that prior has mean = mean of all subtests and sd = sd of all subtests)
+bayesfactor_parameters(posterior_dist[, 9], null = c(SubMean-0.1, SubMean+0.1), prior = distribution_normal(20000, SubMean, SubSD))
+
+#visualize Bayes factor for this analysis
+plot(bayesfactor_parameters(posterior_dist[, 9], null = c(SubMean-0.1, SubMean+0.1), prior = distribution_normal(20000, SubMean, SubSD)))
+```
+
+In the case above, it is fairly clear that the Information subtest performance is significantly different from the average subtest performance. For this Bayes factor, a narrow ROPE is specified (i.e., the mean of subtests +/- 0.10), but this can be arbitrarily adjusted for clinical needs. In this case, the interest was just in whether or not the two distributions differed significantly, which would normally be something like a *t*-test comparing the mean of the prior distribution (the mean and standard deviation of all the subtests together) and the mean of the posterior distribution (the estimated *z*-score for Information). For this reason, a more traditional ROPE made sense.
+
+There are many ways in which the posterior distributions can be utilized to explore and describe test performance, but we have tried to select a few applications that might be more common. Similarly, there are many additional opportunities within R for visualizing these tests or even analyzing the posterior distributions. Since we wanted this supplemental file in particular to be beginner-friendly, we selected only a handful of packages that utilize targeted functions; however, clinicians familiar with R and/or Bayesian methods are encouraged to consider these alternatives. Readers are also reminded that in a typical call, the model will produce parameter estimates for every test in every population. These analyses have focused on a single population, so the code used will not be exact for cases where there are more than one populations' parameters estimated. Throughout the accompanying R code from the simulation studies are examples of how to run the model one single populations (as well as multiple populations). For certain purposes, it may be most convenient to run the model on various populations to get the post-test probabilities of diagnoses before then running the model on specific populations of interests. For example, it might be of interest to compute certain performance descriptives relative to the normative sample such as what was highlighted in the document, so one may follow-up the "diagnostic" run of the model with a "descriptive" run where the only population entered is the normative one. Similarly, if the post-test probabilities were to return a diagnosis of amnestic MCI as the most likely diagnoses, then it could be helpful for recommendations and prognosis to then run a descriptive model on just this single population to compare a client's performance to the expected population of individuals with amnestic MCI. These separate descriptive runs are not needed since all the same information will be returned for each population; however, this is mentioned as an alternative since (a) the models run very quickly so there is little time-associated cost to running an extra model and (b) when there are multiple populations being fit in the model, then a clinician will need to be more careful in terms of which effects they are selecting to describe. When just the one population is estimated, the posterior samples can be extracted and used more easily.
+
+Just to highlight what we mean with regard to care in analyzing the posteriors when multiple populations are fit, consider a case where the model has been run using reference samples for 6 different populations. Say that the test battery includes 12 tests. When the code `posterior_dist <- as.data.frame(extract(stan_model, pars = "rScore"))` is used, there will be 12$\cdot$6 = 72 columns that correspond to the posterior predictions of all 12 tests in each of the 6 populations. So, if we wanted to do posterior inference on the 7th test in the 3rd population (let's say that this population is the normative population), then we would need to request just that specific column like this: `posterior_dist[, 43]` or equivalently `posterior_dist[, (12*3)+7]`. What the second call makes explicit is that the columns are in order over the 12 tests for each of the populations, so to get to a specific test within a specific population, we have keep track of how many columns would come before it. When just a single population is fit, then this is not a concern. To get the 7th test when there is just a single population is as simple as calling `posterior_dist[, 7]`. Clearly this is easier and prone to less error from potentially indexing the wrong column (e.g., getting results for a different test or from a different population than intended). This is ultimately, however, a matter of preference.
